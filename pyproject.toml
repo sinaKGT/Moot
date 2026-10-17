@@ -18,6 +18,11 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.uv]
+# The uv cache (C:) and the project (D:) are on different drives, so hardlinks
+# are not possible; copy packages instead (silences uv's warning).
+link-mode = "copy"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
