@@ -213,7 +213,7 @@ Legend: **Must** = in v1 · **Should** = v1 if it stays simple · **Later** = v2
 **Build time:**
 - Memory library: evaluate GitHub options (e.g. Graphiti, Mem0, Cognee) against our needs: embedded with no server, session-scoped, public graph + private per-agent notes, custom argument links, works with any provider
 - Frontend framework (must work well with three.js for the later 3D views)
-- Provider layer: thin own adapter vs an existing multi-provider library
+- Provider layer: **decided (step 2)** — own thin adapter on httpx; one OpenAI-compatible provider covers OpenRouter, OpenAI, Groq, DeepSeek, Gemini, Ollama, LM Studio and custom servers. Anthropic would need its own native adapter if added later
 - Embedded vector store library
 - Document parser (check licences)
 - GPU / VRAM on the dev machine → default local models

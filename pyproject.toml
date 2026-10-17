@@ -5,7 +5,9 @@ description = "A local-first platform where AI agents discuss a topic under a mo
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Sina Khoshgoftar" }]
-dependencies = []
+dependencies = [
+    "httpx>=0.27",
+]
 
 [project.scripts]
 moot = "moot.cli:main"
@@ -29,3 +31,6 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
