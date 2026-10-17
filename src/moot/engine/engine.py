@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import json
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from moot.core import (
@@ -52,6 +52,7 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
     VoteCast,
+    WaitingForModerator,
 )
 from moot.engine.alliances import apply_alliance_action, parse_alliance_action
 from moot.engine.mentions import find_mentions
@@ -95,6 +96,12 @@ class _UserMessage:
 
 
 @dataclass
+class _Reminder:
+    agent_id: str
+    text: str
+
+
+@dataclass
 class _Spoken:
     text: str
     captured: dict[str, str]
@@ -111,8 +118,15 @@ class DiscussionEngine:
     """Runs one session. Create it, subscribe to `events`, then `await run()`.
 
     `pause()`, `resume()` and `stop()` can be called while it runs; they take effect
-    between turns. `say()` posts a message from the user and `open_poll()` runs a poll,
-    between turns and also while paused.
+    between turns. `say()` posts a message from the user, `open_poll()` runs a poll and
+    `remind()` reminds an agent, between turns and also while paused. `give_floor()`,
+    `end_round()`, `next_round()` and `finish()` steer the round plan.
+
+    Human moderator: the engine waits for them before each round (`next_round()`), for
+    every speaker in rounds where the moderator chooses (`give_floor()`), and at the end
+    (`next_round()` or `finish()`). It announces each wait with a WaitingForModerator
+    event. There is no AI help: no summaries, speaker choices, reports or automatic
+    reminders.
 
     @mentions: when an agent writes "@Ben ...?" in a round that allows mentions, Ben answers
     straight away, before the round goes on. A reply can lead to one answer back
@@ -155,10 +169,15 @@ class DiscussionEngine:
         self._max_reply_chain = max_reply_chain
         self._max_replies_per_round = max_replies_per_round
         self._round_replies = 0
-        self._inbox: deque[_UserMessage | PollSpec] = deque()
+        self._inbox: deque[_UserMessage | _Reminder | PollSpec] = deque()
         self._max_moderator_polls = max_moderator_polls
         self._moderator_polls = 0
         self._wake = asyncio.Event()  # set when something may let a waiting engine continue
+        self._human = isinstance(state.config.moderator, HumanModerator)
+        self._floor: deque[str | None] = deque()  # who gets the floor next (None = fair pick)
+        self._advance: str | None = None  # "next" or "end", set by next_round() / end_round()
+        self._finishing = False
+        self.waiting_for: str | None = None  # what the engine is waiting for, if anything
 
     # ----------------------------------------------------------------- controls
 
@@ -204,6 +223,42 @@ class DiscussionEngine:
         self._inbox.append(spec or winner_poll_spec())
         self._wake.set()
 
+    def remind(self, agent: str, text: str) -> None:
+        """Remind an agent of something, publicly; it sees the reminder before its next turn."""
+        if self.state.status is SessionStatus.FINISHED:
+            raise RuntimeError("this session has finished")
+        text = text.strip()
+        if not text:
+            raise ValueError("the reminder is empty")
+        self._inbox.append(_Reminder(self._agent_id(agent), text))
+        self._wake.set()
+
+    def give_floor(self, agent: str | None = None) -> None:
+        """Let an agent (name or id) speak next. Without one, the engine picks fairly."""
+        if self.state.status is SessionStatus.FINISHED:
+            raise RuntimeError("this session has finished")
+        self._floor.append(self._agent_id(agent) if agent else None)
+        self._wake.set()
+
+    def end_round(self) -> None:
+        """End the current round after the current turn. A human moderator then starts the
+        next one with `next_round()`."""
+        self._advance = "end"
+        self._wake.set()
+
+    def next_round(self) -> None:
+        """Move on: end the current round (if one is running) and start the next one. In the
+        last round it just ends the round; once the plan is done, it finishes the discussion."""
+        self._advance = "next"
+        self._wake.set()
+
+    def finish(self) -> None:
+        """End the discussion normally after the current turn, skipping any rounds left.
+        Unlike `stop()`, it counts as completed, so the AI moderator still reports."""
+        self._finishing = True
+        self._running.set()
+        self._wake.set()
+
     def _people_id(self) -> str:
         """Who the user speaks as: the moderator when they moderate, otherwise the user."""
         if isinstance(self.state.config.moderator, HumanModerator):
@@ -236,11 +291,21 @@ class DiscussionEngine:
                 await self._moderator_opening()
             rounds = self.state.config.round_plan.rounds
             for index, current in enumerate(rounds):
-                if self._stopped:
+                if self._human:
+                    await self._round_gate(index, current, "start_round")
+                if self._stopped or self._finishing:
                     break
                 self.state.current_round = index
                 await self._run_round(index, current)
-                if self._moderator and not self._stopped and index < len(rounds) - 1:
+                last_round = index == len(rounds) - 1
+                if self._advance == "end" or not self._human or last_round:
+                    self._advance = None  # a human's "next" opens the next round's gate
+                if (
+                    self._moderator
+                    and not self._stopped
+                    and not self._finishing
+                    and index < len(rounds) - 1
+                ):
                     offer_poll = (
                         self._moderator_polls < self._max_moderator_polls
                         and rounds[index + 1].type is not RoundType.VOTE
@@ -251,6 +316,9 @@ class DiscussionEngine:
                     )
                     if summary is not None and offer_poll:
                         await self._moderator_poll(summary[1].captured.get("poll", ""), index)
+            if self._human and not self._stopped and not self._finishing:
+                last = len(rounds) - 1
+                await self._round_gate(last, rounds[last], "finish")
             reason = "stopped" if self._stopped else "completed"
         except _TooManyFailures:
             reason = "error"
@@ -283,44 +351,141 @@ class DiscussionEngine:
 
     async def _run_round(self, index: int, current: Round) -> None:
         self.events.emit(RoundStarted(round_index=index, round_id=current.id))
+        self._round_replies = 0
+        turns = {agent.id: 0 for agent in self.state.config.agents}
         if current.type is RoundType.VOTE and current.poll is not None:
             await self._between_turns(index, current)
             if self._stopped:
                 return
-            await self._run_poll(current.poll, index, current, opened_by=MODERATOR_ID)
+            if not self._round_cut_short():
+                await self._run_poll(current.poll, index, current, opened_by=MODERATOR_ID)
+        elif self._human and current.speaking_order is SpeakingOrder.MODERATOR:
+            await self._moderated_turns(index, current, turns)
         else:
-            turns = {agent.id: 0 for agent in self.state.config.agents}
-            total = len(turns) * current.turns_per_agent
-            self._round_replies = 0
-            for _ in range(total):
-                await self._between_turns(index, current)
-                if self._stopped:
-                    return
-                agent = await self._next_speaker(index, current, turns)
-                message = await self._agent_turn(agent, index, current, turns[agent.id])
-                turns[agent.id] += 1
-                if message is not None:
-                    await self._answer_mentions(message, index, current)
+            await self._automatic_turns(index, current, turns)
         await self._between_turns(index, current)  # anything the user did during the last turn
         if self._stopped:
             return
         self.events.emit(RoundEnded(round_index=index))
 
+    def _round_cut_short(self) -> bool:
+        return self._stopped or self._finishing or self._advance is not None
+
+    async def _automatic_turns(self, index: int, current: Round, turns: dict[str, int]) -> None:
+        """Everyone gets their turns, in the round's speaking order. Someone given the floor
+        speaks next, even beyond their turns."""
+        while any(count < current.turns_per_agent for count in turns.values()):
+            await self._between_turns(index, current)
+            if self._round_cut_short():
+                return
+            if self._floor:
+                agent = self._granted_speaker(index, current, turns)
+            else:
+                agent = await self._next_speaker(index, current, turns)
+            await self._take_turn(agent, index, current, turns)
+
+    async def _moderated_turns(self, index: int, current: Round, turns: dict[str, int]) -> None:
+        """A human moderator gives the floor, one turn at a time, until they move on."""
+        while True:
+            await self._wait_until(
+                index,
+                current,
+                lambda: bool(self._floor) or self._round_cut_short(),
+                waiting_for="next_speaker",
+            )
+            if self._round_cut_short():
+                return
+            agent = self._granted_speaker(index, current, turns)
+            await self._take_turn(agent, index, current, turns)
+
+    def _granted_speaker(self, index: int, current: Round, turns: dict[str, int]) -> Persona:
+        config = self.state.config
+        requested = self._floor.popleft()
+        if requested is None:
+            agents = config.agents
+            waiting = [a for a in agents if turns[a.id] < current.turns_per_agent]
+            return self._fair_pick(index, current, waiting or list(agents), turns)
+        agent = config.agent(requested)
+        self.events.emit(ModeratorDecision(next_speaker_id=agent.id, reason=""))
+        return agent
+
+    async def _take_turn(
+        self, agent: Persona, index: int, current: Round, turns: dict[str, int]
+    ) -> None:
+        message = await self._agent_turn(agent, index, current, turns[agent.id])
+        turns[agent.id] += 1
+        if message is not None:
+            await self._answer_mentions(message, index, current)
+
+    async def _round_gate(self, index: int, current: Round, waiting_for: str) -> None:
+        """Wait for a human moderator to start round `index` or, at the end, to finish."""
+
+        def ready() -> bool:
+            if self._advance == "end":
+                self._advance = None  # nothing is running to end
+            return self._advance == "next" or self._finishing
+
+        await self._wait_until(index, current, ready, waiting_for=waiting_for)
+        if self._advance == "next":
+            self._advance = None
+
     async def _between_turns(self, index: int, current: Round) -> None:
         """Post what the user said (and get the answers), and wait here while paused."""
+        await self._wait_until(index, current, lambda: True)
+
+    async def _wait_until(
+        self,
+        index: int,
+        current: Round,
+        ready: Callable[[], bool],
+        *,
+        waiting_for: str | None = None,
+    ) -> None:
+        """Handle what the user sends (messages, polls, reminders) until `ready()` is true,
+        also while paused. Announces a wait for the human moderator once."""
         await asyncio.sleep(0)  # let subscribers and controls run
-        while not self._stopped:
-            if self._inbox:
-                item = self._inbox.popleft()
-                if isinstance(item, PollSpec):
-                    await self._run_poll(item, index, current, opened_by=self._people_id())
+        announced = False
+        try:
+            while not self._stopped:
+                if self._inbox:
+                    await self._handle_inbox(self._inbox.popleft(), index, current)
+                elif self._running.is_set() and ready():
+                    return
                 else:
-                    await self._post_user_message(item.text, item.to, index, current)
-            elif self._running.is_set():
-                return
-            else:
-                self._wake.clear()
-                await self._wake.wait()
+                    if waiting_for and not announced and self._running.is_set():
+                        self.waiting_for = waiting_for
+                        self.events.emit(
+                            WaitingForModerator(
+                                waiting_for=waiting_for,  # type: ignore[arg-type]
+                                round_index=index,
+                            )
+                        )
+                        announced = True
+                    self._wake.clear()
+                    await self._wake.wait()
+        finally:
+            self.waiting_for = None
+
+    async def _handle_inbox(
+        self, item: _UserMessage | _Reminder | PollSpec, index: int, current: Round
+    ) -> None:
+        if isinstance(item, PollSpec):
+            await self._run_poll(item, index, current, opened_by=self._people_id())
+        elif isinstance(item, _Reminder):
+            agent = self.state.config.agent(item.agent_id)
+            speaker_id = self._people_id()
+            kind = SpeakerKind.MODERATOR if speaker_id == MODERATOR_ID else SpeakerKind.USER
+            self._post_instant(
+                ChatMessage(
+                    speaker_id=speaker_id,
+                    speaker_kind=kind,
+                    text=f"{agent.name}, a reminder: {item.text}",
+                    round_index=index,
+                )
+            )
+            self._reminders.setdefault(agent.id, []).append(item.text)
+        else:
+            await self._post_user_message(item.text, item.to, index, current)
 
     async def _post_user_message(
         self, text: str, to: list[str], index: int, current: Round
@@ -627,6 +792,8 @@ class DiscussionEngine:
             return
         for rule in broken:
             self.events.emit(RuleViolation(agent_id=agent.id, rule=rule, message_id=message.id))
+        if self._human:
+            return  # the human moderator decides whether to remind anyone
         self._reminders.setdefault(agent.id, []).extend(broken)
         if self._moderator:
             self._moderator_says(f"{agent.name}, a reminder: {' '.join(broken)}", index)

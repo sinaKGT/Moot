@@ -6,7 +6,7 @@ import asyncio
 import io
 
 import pytest
-from fakes import FakeProvider, default_script, speaker_of
+from fakes import FakeProvider, default_script, run_moderated, speaker_of
 
 from moot.console import ConsoleRenderer
 from moot.core import (
@@ -267,7 +267,7 @@ def test_a_human_moderator_speaks_as_the_moderator():
     state = make_state(names=("Ava", "Ben"), moderator=human, graph_builder_model=MODEL)
     engine, provider = make_engine(state)
     engine.say("@Ava please be specific")
-    run(engine.run())
+    run(run_moderated(engine))
     question = state.messages[0]
     assert (question.speaker_id, question.speaker_kind) == (MODERATOR_ID, SpeakerKind.MODERATOR)
     assert 'Sina asked you directly: "@Ava please be specific"' in (

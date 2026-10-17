@@ -36,6 +36,7 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
     VoteCast,
+    WaitingForModerator,
 )
 from moot.memory import (
     alliance_mismatches,
@@ -130,8 +131,11 @@ class ConsoleRenderer:
                     )
             case ModeratorDecision(next_speaker_id=speaker_id, reason=reason) if speaker_id:
                 name = self._agents[speaker_id].name if speaker_id in self._agents else speaker_id
-                line = f"· {self.config.moderator_name} gives the floor to {name}: {reason}"
+                because = f": {reason}" if reason else ""
+                line = f"· {self.config.moderator_name} gives the floor to {name}{because}"
                 self._write(f"\n{self._style(DIM, line)}\n")
+            case WaitingForModerator(waiting_for=waiting_for, round_index=index):
+                self._write(f"\n{self._style(BOLD, '» ' + self._your_move(waiting_for, index))}\n")
             case RuleViolation(agent_id=agent_id, rule=rule) if isinstance(
                 self.config.moderator, HumanModerator
             ):
@@ -161,6 +165,22 @@ class ConsoleRenderer:
                 self._write(f"\n{self._style(BOLD, END_TEXT[reason])}\n")
             case _:
                 pass
+
+    def _your_move(self, waiting_for: str, index: int | None) -> str:
+        """What the human moderator can do now, in terminal commands."""
+        rounds = self.config.round_plan.rounds
+        if waiting_for == "start_round" and index is not None:
+            upcoming = rounds[index]
+            return (
+                f"Your move, {self.config.moderator_name}: /next starts round {index + 1} "
+                f"({upcoming.name}). You can speak, /poll or /remind first."
+            )
+        if waiting_for == "next_speaker":
+            return (
+                "Who speaks next? /floor Name gives someone the floor (/floor alone lets "
+                "Moot choose). /end ends this round, /next moves on."
+            )
+        return "The round plan is done. Ask more questions or /poll, then /finish to end."
 
     def _poll_results(self, poll_id: str, results: list[PollResult]) -> None:
         """Draw the results like a real poll: a bar per option, with counts, percentages
@@ -299,10 +319,13 @@ class ConsoleRenderer:
     def _header(self) -> None:
         config = self.config
         people = ", ".join(self._agent_label(agent) for agent in config.agents)
+        moderator = config.moderator_name
+        if isinstance(config.moderator, HumanModerator):
+            moderator += f" ({config.moderator.role}, you)"
         self._write(
             f"{self._style(BOLD, 'Topic:')} {config.topic}\n"
             f"{self._style(BOLD, 'Participants:')} {people}\n"
-            f"{self._style(BOLD, 'Moderator:')} {config.moderator_name}\n"
+            f"{self._style(BOLD, 'Moderator:')} {moderator}\n"
         )
 
     def _agent_label(self, agent: Persona) -> str:

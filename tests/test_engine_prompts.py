@@ -99,7 +99,9 @@ def test_human_moderator_is_named_with_role():
     config = make_config(
         moderator=HumanModerator(display_name="Sina", role="Judge"), graph_builder_model=MODEL
     )
-    assert "Moderator: Sina (Judge)" in persona_prompt(config, config.agents[0])
+    prompt = persona_prompt(config, config.agents[0])
+    assert "Moderator: Sina (Judge)" in prompt
+    assert "Sina is a person moderating as Judge. Address them as Sina" in prompt
 
 
 @pytest.mark.parametrize(

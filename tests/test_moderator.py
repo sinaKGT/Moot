@@ -6,7 +6,7 @@ import asyncio
 import io
 import json
 
-from fakes import FakeProvider, default_script, moderator_reply, speaker_of
+from fakes import FakeProvider, default_script, moderator_reply, run_moderated, speaker_of
 
 from moot.core import (
     MODERATOR_ID,
@@ -61,7 +61,8 @@ def run(state, script=default_script, **kwargs):
         build_graph=False,
         **kwargs,
     )
-    asyncio.run(engine.run())
+    human = isinstance(state.config.moderator, HumanModerator)
+    asyncio.run(run_moderated(engine) if human else engine.run())
     return engine, provider
 
 

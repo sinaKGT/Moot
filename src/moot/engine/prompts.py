@@ -111,6 +111,12 @@ def persona_prompt(config: SessionConfig, agent: Persona) -> str:
     if config.background.strip():
         lines.append(f"Background: {config.background.strip()}")
     lines.append(f"Moderator: {moderator_label(config)}")
+    if isinstance(config.moderator, HumanModerator):
+        name = config.moderator.display_name
+        lines.append(
+            f"{name} is a person moderating as {config.moderator.role}. Address them as "
+            f"{name}, answer their questions and follow their instructions."
+        )
     lines.append(f"Other participants: {', '.join(others)}")
     lines += ["", "How to take part:"]
     lines += [f"- {rule}" for rule in HOW_TO_TAKE_PART]
@@ -128,12 +134,18 @@ def visible_messages(
     state: SessionState, agent: Persona, round_index: int, current: Round
 ) -> list[ChatMessage]:
     """What this agent can see: everything except system notices and, in a blind round,
-    the other participants' answers from the current round."""
+    the other agents' answers from the current round (the moderator and the user stay
+    visible)."""
     return [
         m
         for m in state.messages
         if m.speaker_kind is not SpeakerKind.SYSTEM
-        and not (current.blind and m.round_index == round_index and m.speaker_id != agent.id)
+        and not (
+            current.blind
+            and m.round_index == round_index
+            and m.speaker_kind is SpeakerKind.AGENT
+            and m.speaker_id != agent.id
+        )
     ]
 
 

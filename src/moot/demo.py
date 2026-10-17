@@ -11,6 +11,7 @@ from typing import TextIO
 
 from moot.console import ConsoleRenderer
 from moot.core import (
+    HumanModerator,
     ModelRef,
     Persona,
     PollSpec,
@@ -31,9 +32,20 @@ DEMO_TOPIC = "Should cities ban private cars from their centres?"
 DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 
-def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionConfig:
+def demo_config(
+    topic: str,
+    model: ModelRef,
+    background: str = "",
+    moderator: HumanModerator | None = None,
+) -> SessionConfig:
     """Ava (for), Ben (against) and Cleo (undecided, open to alliances), over an opening,
-    a challenge and a closing round, then a vote on who made the strongest case."""
+    a challenge and a closing round, then a vote on who made the strongest case.
+
+    With a human moderator, they choose who speaks in the challenge round and start each
+    round; the model also builds the argument map."""
+    extra: dict = {}
+    if moderator is not None:
+        extra = {"moderator": moderator, "graph_builder_model": model}
     return SessionConfig(
         topic=topic,
         background=background,
@@ -91,6 +103,7 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
             ]
         ),
         default_model=model,
+        **extra,
     )
 
 
@@ -98,7 +111,29 @@ TERMINAL_HELP = (
     "Commands: /poll (who made the strongest case?), /poll Question | option | option, "
     "/pause, /resume."
 )
+MODERATOR_HELP = (
+    "As the moderator: /next (start or move to the next round), /floor Name (give someone "
+    "the floor), /end (end this round), /remind Name text, /finish (end the discussion)."
+)
 DEFAULT_POLL_OPTIONS = ("Yes", "No", "Not sure")
+
+
+def terminal_help(config: SessionConfig) -> str:
+    if isinstance(config.moderator, HumanModerator):
+        return f"{TERMINAL_HELP} {MODERATOR_HELP}"
+    return TERMINAL_HELP
+
+
+def _split_name(config: SessionConfig, text: str) -> tuple[str, str]:
+    """'Domain Expert keep it short' -> ('Domain Expert', 'keep it short')."""
+    cleaned = text.strip().removeprefix("@")
+    for agent in sorted(config.agents, key=lambda a: len(a.name), reverse=True):
+        name = agent.name
+        if cleaned.casefold().startswith(name.casefold()) and (
+            len(cleaned) == len(name) or not cleaned[len(name)].isalnum()
+        ):
+            return name, cleaned[len(name) :].strip(" ,:-")
+    raise ValueError("start with a participant's name, e.g. /remind Ben keep it short")
 
 
 def terminal_command(engine: DiscussionEngine, text: str) -> str | None:
@@ -125,8 +160,19 @@ def terminal_command(engine: DiscussionEngine, text: str) -> str | None:
             engine.pause()
         case "/resume":
             engine.resume()
+        case "/next":
+            engine.next_round()
+        case "/end":
+            engine.end_round()
+        case "/finish":
+            engine.finish()
+        case "/floor":
+            engine.give_floor(rest.strip() or None)
+        case "/remind":
+            name, reminder = _split_name(engine.state.config, rest)
+            engine.remind(name, reminder)
         case _:
-            return f"Unknown command {command}. {TERMINAL_HELP}"
+            return f"Unknown command {command}. {terminal_help(engine.state.config)}"
     return None
 
 
@@ -170,15 +216,18 @@ async def run_in_console(
 ) -> str:
     """Run a session while printing it; return how it ended ("completed", "stopped", "error").
 
-    With `interactive`, every line typed in the terminal is posted to the discussion.
+    With `interactive`, every line typed in the terminal is posted to the discussion. A
+    human-moderated session needs it, since the moderator steers it by typing.
     """
+    if isinstance(state.config.moderator, HumanModerator) and not interactive:
+        raise ValueError("a discussion you moderate needs a terminal to type in")
     engine = DiscussionEngine(state, providers=providers)
     renderer = ConsoleRenderer(state.config, out=out, color=color, state=state)
     if interactive:
         names = " or ".join(f"@{agent.name}" for agent in state.config.agents[:2])
         renderer.hint(
             f"Type a message and press Enter at any time to join in; write {names} "
-            f"to ask one of them directly. {TERMINAL_HELP}"
+            f"to ask one of them directly (@all asks everyone). {terminal_help(state.config)}"
         )
         listen_to_terminal(engine, asyncio.get_running_loop(), show=renderer.hint)
     follower = asyncio.create_task(renderer.follow(engine.events.subscribe()))

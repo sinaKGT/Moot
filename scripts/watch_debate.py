@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-from moot.core import ModelRef, SessionState
+from moot.core import HumanModerator, ModelRef, SessionState
 from moot.demo import DEFAULT_OPENROUTER_MODEL, DEMO_TOPIC, demo_config, run_in_console
 from moot.engine.moderator import check_topic
 from moot.envfile import load_env_file
@@ -62,6 +62,21 @@ def ask_choice(choices: list[tuple[str, ModelRef]]) -> ModelRef:
         print("Please type one of the numbers above.")
 
 
+def ask_moderator(agent_names: list[str]) -> HumanModerator | None:
+    """Ask who moderates; None means the AI moderator."""
+    answer = input("Who moderates? [1] The AI moderator  [2] You  (press Enter for 1): ")
+    if answer.strip() != "2":
+        return None
+    taken = {name.casefold() for name in agent_names}
+    while True:
+        name = input("Your name: ").strip()
+        if 0 < len(name) <= 40 and name.casefold() not in taken:
+            break
+        print(f"Please use a name of up to 40 letters that isn't {', '.join(agent_names)}.")
+    role = input("Your role, e.g. Judge or Journalist (press Enter for Moderator): ").strip()
+    return HumanModerator(display_name=name, role=role[:60] or "Moderator")
+
+
 def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
@@ -82,19 +97,24 @@ def main() -> int:
         return 1
     model = ask_choice(choices)
 
-    print("\nThe moderator is reading the topic...")
+    interactive = sys.stdin.isatty()
+    agent_names = [agent.name for agent in demo_config(topic, model).agents]
+    moderator = ask_moderator(agent_names) if interactive else None
+
     background = ""
-    question = asyncio.run(moderator_question(topic, model))
-    if question:
-        print(f"Moderator: {question}")
-        answer = input("> ").strip()
-        if answer:
-            background = f"The user clarified the topic: {answer}"
+    if moderator is None:  # when you moderate, there is no AI help
+        print("\nThe moderator is reading the topic...")
+        question = asyncio.run(moderator_question(topic, model))
+        if question:
+            print(f"Moderator: {question}")
+            answer = input("> ").strip()
+            if answer:
+                background = f"The user clarified the topic: {answer}"
     print()
 
-    state = SessionState.new(demo_config(topic, model, background))
+    state = SessionState.new(demo_config(topic, model, background, moderator))
     try:
-        reason = asyncio.run(run_in_console(state, interactive=sys.stdin.isatty()))
+        reason = asyncio.run(run_in_console(state, interactive=interactive))
     except KeyboardInterrupt:
         print("\nStopped.")
         return 1

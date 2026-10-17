@@ -8,7 +8,14 @@ import io
 import json
 
 import pytest
-from fakes import FakeProvider, default_script, is_vote_request, moderator_reply, speaker_of
+from fakes import (
+    FakeProvider,
+    default_script,
+    is_vote_request,
+    moderator_reply,
+    run_moderated,
+    speaker_of,
+)
 
 from moot.console import ConsoleRenderer
 from moot.core import (
@@ -295,7 +302,7 @@ def test_a_human_moderator_opens_polls_as_the_moderator():
     state = make_state(moderator=human, graph_builder_model=MODEL)
     engine, provider = make_engine(state)
     engine.open_poll()
-    run(engine.run())
+    run(run_moderated(engine))
     assert state.polls[0].opened_by == MODERATOR_ID
     assert f'Sina has opened a poll: "{QUESTION}"' in vote_prompts(provider)[0]
 

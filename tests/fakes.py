@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import AsyncIterator, Callable
 
+from moot.core.events import WaitingForModerator
 from moot.engine.moderator import (
     OPENING_TASK,
     REPORT_TASK,
@@ -74,6 +75,25 @@ def default_script(request: ChatRequest) -> list[str]:
         point = {"ref": "N1", "type": "claim", "text": f"{graph_speaker(request)} main point"}
         return [json.dumps({"nodes": [point], "links": []})]
     return [f"{speaker_of(request)} ", f"round {round_of(request)}"]
+
+
+async def run_moderated(engine, respond: Callable[[WaitingForModerator], bool] | None = None):
+    """Run a human-moderated session with a stand-in moderator answering every wait.
+
+    `respond` (if given) sees each WaitingForModerator event first and returns True when it
+    handled it. Otherwise rounds are started and the session finished with next_round(),
+    and when a speaker is wanted the round just moves on.
+    """
+
+    async def moderator() -> None:
+        async for event in engine.events.subscribe():
+            if isinstance(event, WaitingForModerator) and not (respond and respond(event)):
+                engine.next_round()
+
+    task = asyncio.create_task(moderator())
+    state = await engine.run()
+    await task
+    return state
 
 
 class FakeProvider:

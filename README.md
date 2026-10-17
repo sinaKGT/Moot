@@ -40,6 +40,12 @@ can also @ each other. Commands:
   Yes / No / Not sure)
 - `/pause` and `/resume`
 
+When it asks who moderates, choose **You** to run the discussion yourself under your own
+name and role. Moot then waits for you: `/next` starts each round, `/floor Ben` gives
+someone the floor in the challenge round (`/floor` alone lets Moot choose), `/end` ends a
+round, `/remind Ben keep it short` reminds an agent, and `/finish` ends the discussion.
+`@all` asks every agent at once. There is no AI moderator help in this mode.
+
 ## Project layout
 
 ```

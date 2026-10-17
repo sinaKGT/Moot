@@ -125,6 +125,15 @@ class EngineNotice(EventBase):
     message: str
 
 
+class WaitingForModerator(EventBase):
+    """The engine waits for the human moderator: to start the next round, to give someone
+    the floor, or to finish once the round plan is done."""
+
+    type: Literal["waiting_for_moderator"] = "waiting_for_moderator"
+    waiting_for: Literal["start_round", "next_speaker", "finish"]
+    round_index: int | None = None
+
+
 class ErrorEvent(EventBase):
     type: Literal["error"] = "error"
     message: str
@@ -151,6 +160,7 @@ Event = Annotated[
     | PollClosed
     | RuleViolation
     | EngineNotice
+    | WaitingForModerator
     | ErrorEvent,
     Field(discriminator="type"),
 ]
