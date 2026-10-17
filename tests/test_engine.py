@@ -45,10 +45,12 @@ def make_state(rounds: list[Round] | None = None) -> SessionState:
     return SessionState.new(config)
 
 
-def make_engine(state, provider=None, **kwargs):
+def make_engine(state, provider=None, build_graph=False, **kwargs):
+    """Engine with a fake provider. The graph builder is off here; see test_graph_builder."""
     provider = provider or FakeProvider()
     pool = ProviderPool(factory=lambda preset_id: provider)
-    return DiscussionEngine(state, providers=pool, **kwargs), provider
+    engine = DiscussionEngine(state, providers=pool, build_graph=build_graph, **kwargs)
+    return engine, provider
 
 
 def agent_texts(state):

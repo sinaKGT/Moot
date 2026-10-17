@@ -211,7 +211,7 @@ Legend: **Must** = in v1 · **Should** = v1 if it stays simple · **Later** = v2
 - Winner and other questions decided by agent polls, started by the moderator at any time or placed in the round plan; agents just pick an option, no text
 
 **Build time:**
-- Memory library: evaluate GitHub options (e.g. Graphiti, Mem0, Cognee) against our needs: embedded with no server, session-scoped, public graph + private per-agent notes, custom argument links, works with any provider
+- Memory library: **decided (step 5)** — own argument graph on the step-3 data model; one structured model call per turn. Graphiti (needs Neo4j; its embedded Kuzu backend is archived), Mem0 (no typed relationships) and Cognee (general document knowledge graph) did not fit. Borrowed Graphiti's idea of rules for which link types may connect which point types. Revisit Cognee / LanceDB for per-agent knowledge (RAG)
 - Frontend framework (must work well with three.js for the later 3D views)
 - Provider layer: **decided (step 2)** — own thin adapter on httpx; one OpenAI-compatible provider covers OpenRouter, OpenAI, Groq, DeepSeek, Gemini, Ollama, LM Studio and custom servers. Anthropic would need its own native adapter if added later
 - Embedded vector store library

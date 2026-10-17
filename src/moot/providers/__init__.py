@@ -19,6 +19,11 @@ from moot.providers.base import (
 )
 from moot.providers.openai_compat import OpenAICompatibleProvider, ProviderConfig
 from moot.providers.registry import PRESETS, ProviderPreset, create_provider
+from moot.providers.structured import (
+    StructuredOutputError,
+    complete_structured,
+    extract_json_object,
+)
 
 __all__ = [
     "PRESETS",
@@ -38,7 +43,10 @@ __all__ = [
     "ProviderResponseError",
     "StreamEnd",
     "StreamEvent",
+    "StructuredOutputError",
     "TextDelta",
     "Usage",
+    "complete_structured",
     "create_provider",
+    "extract_json_object",
 ]

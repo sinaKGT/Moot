@@ -40,7 +40,10 @@ def test_run_in_console_prints_the_discussion():
     assert "Ava: Ava round 1" in text
     assert "Ben: Ben round 2" in text
     assert "[10 in / 5 out tokens]" in text
-    assert text.rstrip().endswith("Discussion finished.")
+    assert "Discussion finished." in text
+    assert "── Argument map ──" in text
+    assert "• Ava: Ava main point" in text
+    assert "• Ben: Ben main point" in text
     assert "\x1b[" not in text
 
 

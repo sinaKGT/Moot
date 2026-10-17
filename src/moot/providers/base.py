@@ -25,6 +25,7 @@ class ChatRequest:
     messages: Sequence[Message]
     temperature: float | None = None
     max_tokens: int | None = None
+    json_mode: bool = False  # ask the server for a JSON object, where it supports that
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "messages", tuple(self.messages))
@@ -77,10 +78,11 @@ class ModelInfo:
 class ProviderError(Exception):
     """Base class for every provider failure."""
 
-    def __init__(self, provider: str, message: str) -> None:
+    def __init__(self, provider: str, message: str, *, status: int | None = None) -> None:
         super().__init__(f"{provider}: {message}")
         self.provider = provider
         self.message = message
+        self.status = status  # HTTP status code, when the error came from one
 
 
 class ProviderConnectionError(ProviderError):

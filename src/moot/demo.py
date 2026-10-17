@@ -66,6 +66,7 @@ async def run_in_console(
     providers: ProviderPool | None = None,
     out: TextIO | None = None,
     color: bool | None = None,
+    show_map: bool = True,
 ) -> str:
     """Run a session while printing it; return how it ended ("completed", "stopped", "error")."""
     engine = DiscussionEngine(state, providers=providers)
@@ -76,5 +77,7 @@ async def run_in_console(
     finally:
         engine.events.close()
         await follower
+    if show_map and state.messages:
+        renderer.render_argument_map(state)
     ended = [e for e in engine.events.history if isinstance(e, SessionEnded)]
     return ended[-1].reason if ended else "error"

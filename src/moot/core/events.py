@@ -114,6 +114,13 @@ class RuleViolation(EventBase):
     message_id: str | None = None
 
 
+class EngineNotice(EventBase):
+    """A passing status message for the UI (not part of the discussion)."""
+
+    type: Literal["engine_notice"] = "engine_notice"
+    message: str
+
+
 class ErrorEvent(EventBase):
     type: Literal["error"] = "error"
     message: str
@@ -139,6 +146,7 @@ Event = Annotated[
     | VoteCast
     | PollClosed
     | RuleViolation
+    | EngineNotice
     | ErrorEvent,
     Field(discriminator="type"),
 ]

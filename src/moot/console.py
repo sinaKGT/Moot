@@ -7,8 +7,9 @@ import sys
 from collections.abc import AsyncIterator
 from typing import TextIO
 
-from moot.core import Persona, SessionConfig, SpeakerKind
+from moot.core import Persona, SessionConfig, SessionState, SpeakerKind
 from moot.core.events import (
+    EngineNotice,
     ErrorEvent,
     Event,
     RoundStarted,
@@ -20,6 +21,7 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
 )
+from moot.memory import argument_map
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
@@ -80,6 +82,8 @@ class ConsoleRenderer:
                 self._write(f"\n{self._style(DIM, tokens)}\n" if tokens else "\n")
             case ErrorEvent(agent_id=None, message=text):
                 self._write(f"\n{self._style(RED, 'Error: ' + text)}\n")
+            case EngineNotice(message=text):
+                self._write(f"\n{self._style(DIM, '· ' + text)}\n")
             case SessionPaused():
                 self._write(f"\n{self._style(DIM, '· Paused')}\n")
             case SessionResumed():
@@ -88,6 +92,18 @@ class ConsoleRenderer:
                 self._write(f"\n{self._style(BOLD, END_TEXT[reason])}\n")
             case _:
                 pass
+
+    def render_argument_map(self, state: SessionState) -> None:
+        """Print the claims, challenges, concessions and open questions from the graph."""
+        sections = argument_map(state).sections()
+        self._write(f"\n{self._style(BOLD, '── Argument map ──')}\n")
+        if not sections:
+            self._write(f"{self._style(DIM, 'No points were recorded.')}\n")
+            return
+        for title, items in sections:
+            self._write(f"\n{self._style(BOLD, title)}\n")
+            for item in items:
+                self._write(f"  • {item}\n")
 
     def _header(self) -> None:
         config = self.config

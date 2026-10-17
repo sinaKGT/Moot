@@ -26,6 +26,7 @@ class ProviderPreset:
     api_key_env: str | None
     local: bool
     include_usage: bool = False
+    json_mode: bool = False
     headers: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -39,6 +40,7 @@ PRESETS: dict[str, ProviderPreset] = {
             "OPENROUTER_API_KEY",
             local=False,
             include_usage=True,
+            json_mode=True,
             headers={"X-Title": "Moot"},
         ),
         ProviderPreset(
@@ -48,12 +50,23 @@ PRESETS: dict[str, ProviderPreset] = {
             "OPENAI_API_KEY",
             local=False,
             include_usage=True,
+            json_mode=True,
         ),
         ProviderPreset(
-            "groq", "Groq", "https://api.groq.com/openai/v1", "GROQ_API_KEY", local=False
+            "groq",
+            "Groq",
+            "https://api.groq.com/openai/v1",
+            "GROQ_API_KEY",
+            local=False,
+            json_mode=True,
         ),
         ProviderPreset(
-            "deepseek", "DeepSeek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", local=False
+            "deepseek",
+            "DeepSeek",
+            "https://api.deepseek.com/v1",
+            "DEEPSEEK_API_KEY",
+            local=False,
+            json_mode=True,
         ),
         ProviderPreset(
             "gemini",
@@ -62,7 +75,9 @@ PRESETS: dict[str, ProviderPreset] = {
             "GEMINI_API_KEY",
             local=False,
         ),
-        ProviderPreset("ollama", "Ollama", "http://localhost:11434/v1", None, local=True),
+        ProviderPreset(
+            "ollama", "Ollama", "http://localhost:11434/v1", None, local=True, json_mode=True
+        ),
         ProviderPreset("lmstudio", "LM Studio", "http://localhost:1234/v1", None, local=True),
         ProviderPreset(
             "custom", "Custom (OpenAI-compatible)", None, "MOOT_CUSTOM_API_KEY", local=True
@@ -99,6 +114,7 @@ def create_provider(
         headers=dict(preset.headers),
         local=preset.local,
         include_usage=preset.include_usage,
+        json_mode=preset.json_mode,
         read_timeout=LOCAL_READ_TIMEOUT if preset.local else CLOUD_READ_TIMEOUT,
     )
     return OpenAICompatibleProvider(config, client=client)

@@ -44,6 +44,7 @@ class ProviderConfig:
     headers: Mapping[str, str] = field(default_factory=dict)
     local: bool = False
     include_usage: bool = False
+    json_mode: bool = False  # server accepts response_format={"type": "json_object"}
     connect_timeout: float = 10.0
     read_timeout: float = 120.0
     max_retries: int = 2
@@ -55,6 +56,7 @@ class OpenAICompatibleProvider:
         self.config = config
         self.name = config.name
         self._base_url = config.base_url.rstrip("/")
+        self._json_mode = config.json_mode
         self._owns_client = client is None
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(config.read_timeout, connect=config.connect_timeout)
@@ -75,9 +77,8 @@ class OpenAICompatibleProvider:
     async def stream(self, request: ChatRequest) -> AsyncIterator[StreamEvent]:
         finish_reason: str | None = None
         usage: Usage | None = None
-        payload = self._payload(request, stream=True)
 
-        async with self._send("POST", "/chat/completions", json_body=payload) as response:
+        async with self._open_chat(request) as response:
             try:
                 async for line in response.aiter_lines():
                     data = _sse_data(line)
@@ -166,7 +167,28 @@ class OpenAICompatibleProvider:
             payload["max_tokens"] = request.max_tokens
         if stream and self.config.include_usage:
             payload["stream_options"] = {"include_usage": True}
+        if request.json_mode and self._json_mode:
+            payload["response_format"] = {"type": "json_object"}
         return payload
+
+    @asynccontextmanager
+    async def _open_chat(self, request: ChatRequest) -> AsyncIterator[httpx.Response]:
+        """Open a streamed chat response. If the server rejects JSON mode, retry without it
+        and remember not to ask again."""
+        payload = self._payload(request, stream=True)
+        opened = False
+        try:
+            async with self._send("POST", "/chat/completions", json_body=payload) as response:
+                opened = True
+                yield response
+                return
+        except ProviderResponseError as exc:
+            if opened or exc.status != 400 or "response_format" not in payload:
+                raise
+        self._json_mode = False
+        retry_payload = self._payload(request, stream=True)
+        async with self._send("POST", "/chat/completions", json_body=retry_payload) as response:
+            yield response
 
     @asynccontextmanager
     async def _send(
@@ -231,14 +253,16 @@ class OpenAICompatibleProvider:
                 message = f"the API key was rejected (HTTP {status})."
             if self.config.api_key_env:
                 message += f" Set {self.config.api_key_env}."
-            return ProviderAuthError(self.name, f"{message} {detail}".strip())
+            return ProviderAuthError(self.name, f"{message} {detail}".strip(), status=status)
         if status == 404:
-            return ModelNotFoundError(self.name, f"not found (HTTP 404). {detail}".strip())
+            return ModelNotFoundError(
+                self.name, f"not found (HTTP 404). {detail}".strip(), status=status
+            )
         if status == 429:
             return ProviderRateLimitError(
-                self.name, f"too many requests (HTTP 429). {detail}".strip()
+                self.name, f"too many requests (HTTP 429). {detail}".strip(), status=status
             )
-        return ProviderResponseError(self.name, f"HTTP {status}. {detail}".strip())
+        return ProviderResponseError(self.name, f"HTTP {status}. {detail}".strip(), status=status)
 
     def _parse_chunk(self, data: str) -> dict[str, Any]:
         try:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 
 from moot.core import (
     SYSTEM_ID,
@@ -17,7 +18,9 @@ from moot.core import (
     new_id,
 )
 from moot.core.events import (
+    EngineNotice,
     ErrorEvent,
+    GraphUpdated,
     RoundEnded,
     RoundStarted,
     SessionEnded,
@@ -28,11 +31,19 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
 )
+from moot.engine.mentions import find_mentions
 from moot.engine.pool import ProviderPool
 from moot.engine.prompts import build_agent_messages
 from moot.engine.stream import EventStream
 from moot.engine.text import NamePrefixStripper
-from moot.providers import ChatRequest, ProviderError, TextDelta, Usage
+from moot.memory import GraphBuilder
+from moot.providers import (
+    ChatRequest,
+    ProviderError,
+    StructuredOutputError,
+    TextDelta,
+    Usage,
+)
 
 DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
 
@@ -55,12 +66,18 @@ class DiscussionEngine:
         providers: ProviderPool | None = None,
         events: EventStream | None = None,
         max_consecutive_failures: int = DEFAULT_MAX_CONSECUTIVE_FAILURES,
+        build_graph: bool = True,
+        graph_builder: GraphBuilder | None = None,
     ) -> None:
         self.state = state
         self.events = events or EventStream()
         self._providers = providers or ProviderPool()
         self._owns_providers = providers is None
         self._max_failures = max_consecutive_failures
+        self._build_graph = build_graph
+        self._graph_builder = graph_builder or GraphBuilder()
+        self._graph_queue: asyncio.Queue[ChatMessage | None] = asyncio.Queue()
+        self._graph_busy = False
         self._failures = 0
         self._stopped = False
         self._running = asyncio.Event()
@@ -94,6 +111,7 @@ class DiscussionEngine:
 
         self.state.status = SessionStatus.RUNNING
         self.events.emit(SessionStarted(session_id=self.state.id))
+        graph_worker = asyncio.create_task(self._graph_worker()) if self._build_graph else None
         reason = "completed"
         try:
             for index, current in enumerate(self.state.config.round_plan.rounds):
@@ -106,6 +124,8 @@ class DiscussionEngine:
         except _TooManyFailures:
             reason = "error"
         finally:
+            if graph_worker is not None:
+                await self._finish_graph(graph_worker, cancel=self._stopped)
             self.state.status = SessionStatus.FINISHED
             self.events.emit(SessionEnded(reason=reason))
             self.events.close()
@@ -118,6 +138,9 @@ class DiscussionEngine:
         config = self.state.config
         for agent in config.agents:
             self._providers.get(config.model_for(agent))
+        graph_model = config.graph_model()
+        if self._build_graph and graph_model is not None:
+            self._providers.get(graph_model)
 
     async def _run_round(self, index: int, current: Round) -> None:
         self.events.emit(RoundStarted(round_index=index, round_id=current.id))
@@ -174,6 +197,7 @@ class DiscussionEngine:
             speaker_kind=SpeakerKind.AGENT,
             text=text,
             round_index=index,
+            mentions=find_mentions(text, config.agents, exclude=agent.id),
             usage=TokenUsage(
                 prompt_tokens=usage.prompt_tokens, completion_tokens=usage.completion_tokens
             )
@@ -182,6 +206,54 @@ class DiscussionEngine:
         )
         self.state.messages.append(message)
         self.events.emit(TurnCompleted(message=message))
+        if self._build_graph:
+            self._graph_queue.put_nowait(message)  # mapped in the background
+
+    async def _graph_worker(self) -> None:
+        """Map messages into the argument graph one at a time, in the order they were said,
+        while the discussion carries on."""
+        while True:
+            message = await self._graph_queue.get()
+            if message is None:
+                return
+            self._graph_busy = True
+            try:
+                await self._update_graph(message)
+            except Exception as exc:  # a bug here must not break the discussion
+                self.events.emit(
+                    ErrorEvent(
+                        message=f"Argument graph not updated: {exc!r}", message_id=message.id
+                    )
+                )
+            finally:
+                self._graph_busy = False
+
+    async def _finish_graph(self, worker: asyncio.Task[None], *, cancel: bool) -> None:
+        """Wait for pending graph work, or drop it when the discussion was stopped."""
+        if cancel:
+            worker.cancel()
+        else:
+            if self._graph_busy or not self._graph_queue.empty():
+                self.events.emit(EngineNotice(message="Finishing the argument map..."))
+            self._graph_queue.put_nowait(None)
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker
+
+    async def _update_graph(self, message: ChatMessage) -> None:
+        """Map the message into the argument graph. A failure here never stops the discussion."""
+        model = self.state.config.graph_model()
+        if model is None:
+            return
+        try:
+            update = await self._graph_builder.update(
+                self.state, message, self._providers.get(model), model
+            )
+        except (ProviderError, StructuredOutputError) as exc:
+            self.events.emit(
+                ErrorEvent(message=f"Argument graph not updated: {exc}", message_id=message.id)
+            )
+            return
+        self.events.emit(GraphUpdated(node_ids=update.node_ids, edge_ids=update.edge_ids))
 
     def _emit_text(self, message_id: str, text: str, parts: list[str]) -> None:
         if text:
