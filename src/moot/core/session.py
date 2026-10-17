@@ -11,7 +11,7 @@ from pydantic import Field, field_validator, model_validator
 from moot.core.alliances import Alliance, AllianceStatus
 from moot.core.base import MootModel, new_id, utc_now
 from moot.core.graph import ArgumentGraph, Node, NodeType
-from moot.core.messages import ChatMessage
+from moot.core.messages import MODERATOR_ID, SYSTEM_ID, USER_ID, ChatMessage
 from moot.core.moderator import AIModerator, HumanModerator, Moderator
 from moot.core.notebook import Notebook
 from moot.core.persona import ModelRef, Persona
@@ -78,6 +78,19 @@ class SessionConfig(MootModel):
         if isinstance(self.moderator, HumanModerator):
             return self.moderator.display_name
         return self.moderator.name
+
+    def speaker_label(self, speaker_id: str | None) -> str:
+        """A display name for any speaker id: an agent, the moderator, the user or the system."""
+        for agent in self.agents:
+            if agent.id == speaker_id:
+                return agent.name
+        if speaker_id == MODERATOR_ID:
+            return self.moderator_name
+        if speaker_id == USER_ID:
+            return "User"
+        if speaker_id == SYSTEM_ID:
+            return "System"
+        return speaker_id or "—"
 
     def agent(self, agent_id: str) -> Persona:
         for agent in self.agents:

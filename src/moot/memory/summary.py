@@ -44,10 +44,9 @@ class ArgumentMap:
 def argument_map(state: SessionState) -> ArgumentMap:
     graph = state.graph
     config = state.config
-    names = {agent.id: agent.name for agent in config.agents}
 
     def who(node: Node) -> str:
-        return names.get(node.speaker_id or "", config.moderator_name)
+        return config.speaker_label(node.speaker_id)
 
     def unique(items: list[str]) -> list[str]:
         return list(dict.fromkeys(items))
@@ -119,7 +118,7 @@ def argument_map(state: SessionState) -> ArgumentMap:
 
     for question in graph.find(node_type=NodeType.QUESTION):
         if not graph.incoming(question.id, EdgeType.ANSWERS):
-            asked = ", ".join(names.get(a, a) for a in question.addressed_to)
+            asked = ", ".join(config.speaker_label(a) for a in question.addressed_to)
             to = f" (to {asked})" if asked else ""
             result.unanswered.append(f"{who(question)}{to}: {shorten(question.text)}")
     return result

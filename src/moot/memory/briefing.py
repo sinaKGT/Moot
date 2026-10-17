@@ -58,10 +58,9 @@ def attention_lines(
     state: SessionState, agent: Persona, hidden_round: int | None = None
 ) -> list[str]:
     graph = state.graph
-    names = {a.id: a.name for a in state.config.agents}
 
     def who(node: Node) -> str:
-        return names.get(node.speaker_id or "", state.config.moderator_name)
+        return state.config.speaker_label(node.speaker_id)
 
     def answered_by_me(node: Node) -> bool:
         return any(
@@ -130,9 +129,8 @@ def earlier_points(
 ) -> list[str]:
     """Claims from older messages, as recorded in the graph, for agents' short memory of
     what was said before the recent messages."""
-    names = {a.id: a.name for a in state.config.agents}
     return [
-        f"{names.get(node.speaker_id or '', state.config.moderator_name)}: {node.text}"
+        f"{state.config.speaker_label(node.speaker_id)}: {node.text}"
         for node in state.graph.nodes.values()
         if node.message_id in message_ids
         and node.type in (NodeType.CLAIM, NodeType.EVIDENCE, NodeType.CONCESSION)

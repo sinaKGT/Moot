@@ -7,7 +7,14 @@ import sys
 from collections.abc import AsyncIterator
 from typing import TextIO
 
-from moot.core import HumanModerator, Persona, SessionConfig, SessionState, SpeakerKind
+from moot.core import (
+    USER_ID,
+    HumanModerator,
+    Persona,
+    SessionConfig,
+    SessionState,
+    SpeakerKind,
+)
 from moot.core.events import (
     EngineNotice,
     ErrorEvent,
@@ -60,6 +67,7 @@ class ConsoleRenderer:
         if self.color:
             enable_windows_ansi()
         self._agents = {agent.id: agent for agent in config.agents}
+        self._speakers: dict[str, str] = {}  # message id -> speaker id, to show who a reply answers
 
     async def follow(self, events: AsyncIterator[Event]) -> None:
         async for event in events:
@@ -75,8 +83,12 @@ class ConsoleRenderer:
                 self._write(
                     f"\n{self._style(BOLD, title)}\n{self._style(DIM, current.instruction)}\n"
                 )
-            case TurnStarted(speaker_id=speaker_id):
-                self._write(f"\n{self._speaker(speaker_id)}: ")
+            case TurnStarted(message_id=message_id, speaker_id=speaker_id, reply_to=reply_to):
+                self._speakers[message_id] = speaker_id
+                label = self._speaker(speaker_id)
+                if reply_to in self._speakers:
+                    label += f" → {self._name(self._speakers[reply_to])}"
+                self._write(f"\n{label}: ")
             case TokenDelta(text=text):
                 self._write(text)
             case TurnCompleted(message=message) if message.speaker_kind is SpeakerKind.SYSTEM:
@@ -118,6 +130,9 @@ class ConsoleRenderer:
             case _:
                 pass
 
+    def hint(self, text: str) -> None:
+        self._write(f"{self._style(DIM, text)}\n")
+
     def render_argument_map(self, state: SessionState) -> None:
         """Print the claims, challenges, concessions and open questions from the graph."""
         sections = argument_map(state).sections()
@@ -146,8 +161,11 @@ class ConsoleRenderer:
     def _speaker(self, speaker_id: str) -> str:
         agent = self._agents.get(speaker_id)
         if agent is None:
-            return self._style(BOLD, self.config.moderator_name)
+            return self._style(BOLD, self._name(speaker_id))
         return self._style(BOLD + self._rgb(agent.color), agent.name)
+
+    def _name(self, speaker_id: str) -> str:
+        return "You" if speaker_id == USER_ID else self.config.speaker_label(speaker_id)
 
     def _style(self, code: str, text: str) -> str:
         return f"{code}{text}{RESET}" if self.color and text else text

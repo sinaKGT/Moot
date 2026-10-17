@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from moot.core import (
     MODERATOR_ID,
     SYSTEM_ID,
+    USER_ID,
     AIModerator,
     ChatMessage,
+    HumanModerator,
     Node,
     NodeType,
     Persona,
@@ -59,6 +63,7 @@ from moot.providers import (
 )
 
 DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
+DEFAULT_MAX_REPLY_CHAIN = 2  # a question, its answer, and one answer back
 
 
 class _TooManyFailures(Exception):
@@ -82,7 +87,13 @@ class DiscussionEngine:
     """Runs one session. Create it, subscribe to `events`, then `await run()`.
 
     `pause()`, `resume()` and `stop()` can be called while it runs; they take effect
-    between turns.
+    between turns. `say()` posts a message from the user between turns, also while paused.
+
+    @mentions: when an agent writes "@Ben ...?" in a round that allows mentions, Ben answers
+    straight away, before the round goes on. A reply can lead to one answer back
+    (`max_reply_chain`), and agent-to-agent replies per round are capped
+    (`max_replies_per_round`, by default as many as the round's normal turns), so two agents
+    can't keep each other talking. Agents the user @mentions always answer.
     """
 
     def __init__(
@@ -95,6 +106,8 @@ class DiscussionEngine:
         build_graph: bool = True,
         graph_builder: GraphBuilder | None = None,
         moderator_enabled: bool = True,
+        max_reply_chain: int = DEFAULT_MAX_REPLY_CHAIN,
+        max_replies_per_round: int | None = None,
     ) -> None:
         self.state = state
         self.events = events or EventStream()
@@ -113,6 +126,11 @@ class DiscussionEngine:
         self._moderator = ModeratorBrain() if ai_moderated and moderator_enabled else None
         self._reminders: dict[str, list[str]] = {}
         self._last_speaker: str | None = None
+        self._max_reply_chain = max_reply_chain
+        self._max_replies_per_round = max_replies_per_round
+        self._round_replies = 0
+        self._inbox: deque[tuple[str, list[str]]] = deque()
+        self._wake = asyncio.Event()  # set when something may let a waiting engine continue
 
     # ----------------------------------------------------------------- controls
 
@@ -126,12 +144,39 @@ class DiscussionEngine:
         if not self._running.is_set():
             self.state.status = SessionStatus.RUNNING
             self._running.set()
+            self._wake.set()
             self.events.emit(SessionResumed())
 
     def stop(self) -> None:
         """Finish after the current turn."""
         self._stopped = True
         self._running.set()  # let a paused engine reach the stop check
+        self._wake.set()
+
+    def say(self, text: str, *, to: Sequence[str] = ()) -> None:
+        """Post a message from the user (from the human moderator when they moderate).
+
+        It appears between turns, also while the session is paused, and every agent it
+        @mentions answers right away. `to` adds agents (names or ids) to answer even if the
+        text doesn't @mention them.
+        """
+        if self.state.status is SessionStatus.FINISHED:
+            raise RuntimeError("this session has finished")
+        text = text.strip()
+        if not text:
+            raise ValueError("the message is empty")
+        self._inbox.append((text, [self._agent_id(name) for name in to]))
+        self._wake.set()
+
+    def _agent_id(self, name_or_id: str) -> str:
+        config = self.state.config
+        agent = config.agent_by_name(name_or_id)
+        if agent is None:
+            try:
+                agent = config.agent(name_or_id)
+            except ValueError:
+                raise ValueError(f"there is no participant called {name_or_id!r}") from None
+        return agent.id
 
     # --------------------------------------------------------------------- run
 
@@ -194,15 +239,83 @@ class DiscussionEngine:
         else:
             turns = {agent.id: 0 for agent in self.state.config.agents}
             total = len(turns) * current.turns_per_agent
+            self._round_replies = 0
             for _ in range(total):
-                await asyncio.sleep(0)  # let subscribers and controls run between turns
-                await self._running.wait()
+                await self._between_turns(index, current)
                 if self._stopped:
                     return
                 agent = await self._next_speaker(index, current, turns)
-                await self._agent_turn(agent, index, current, turns[agent.id])
+                message = await self._agent_turn(agent, index, current, turns[agent.id])
                 turns[agent.id] += 1
+                if message is not None:
+                    await self._answer_mentions(message, index, current)
+            await self._between_turns(index, current)  # anything the user said during the last turn
+            if self._stopped:
+                return
         self.events.emit(RoundEnded(round_index=index))
+
+    async def _between_turns(self, index: int, current: Round) -> None:
+        """Post what the user said (and get the answers), and wait here while paused."""
+        await asyncio.sleep(0)  # let subscribers and controls run
+        while not self._stopped:
+            if self._inbox:
+                text, to = self._inbox.popleft()
+                await self._post_user_message(text, to, index, current)
+            elif self._running.is_set():
+                return
+            else:
+                self._wake.clear()
+                await self._wake.wait()
+
+    async def _post_user_message(
+        self, text: str, to: list[str], index: int, current: Round
+    ) -> None:
+        config = self.state.config
+        if isinstance(config.moderator, HumanModerator):
+            speaker_id, kind = MODERATOR_ID, SpeakerKind.MODERATOR
+        else:
+            speaker_id, kind = USER_ID, SpeakerKind.USER
+        mentions = find_mentions(text, config.agents)
+        mentions += [agent_id for agent_id in to if agent_id not in mentions]
+        message = ChatMessage(
+            speaker_id=speaker_id,
+            speaker_kind=kind,
+            text=text,
+            round_index=index,
+            mentions=mentions,
+        )
+        self._post_instant(message)
+        if self._build_graph:
+            self._graph_queue.put_nowait(message)
+        await self._answer_mentions(message, index, current)
+
+    async def _answer_mentions(
+        self, question: ChatMessage, index: int, current: Round, chain: int = 0
+    ) -> None:
+        """Agents @mentioned in a message answer straight away, within the loop guard."""
+        from_agent = question.speaker_kind is SpeakerKind.AGENT
+        if from_agent and (not current.mentions_allowed or current.blind):
+            return
+        if chain >= self._max_reply_chain:
+            return
+        config = self.state.config
+        limit = self._max_replies_per_round
+        if limit is None:
+            limit = len(config.agents) * current.turns_per_agent
+        for agent_id in question.mentions:
+            if self._stopped:
+                return
+            if agent_id == question.speaker_id:
+                continue
+            if from_agent:
+                if self._round_replies >= limit:
+                    return  # the question is answered in a normal turn instead
+                self._round_replies += 1
+            reply = await self._agent_turn(
+                config.agent(agent_id), index, current, 0, reply_to=question
+            )
+            if reply is not None:
+                await self._answer_mentions(reply, index, current, chain + 1)
 
     async def _next_speaker(self, index: int, current: Round, turns: dict[str, int]) -> Persona:
         agents = self.state.config.agents
@@ -267,23 +380,40 @@ class DiscussionEngine:
 
     # ------------------------------------------------------------- agent turns
 
-    async def _agent_turn(self, agent: Persona, index: int, current: Round, turn: int) -> None:
+    async def _agent_turn(
+        self,
+        agent: Persona,
+        index: int,
+        current: Round,
+        turn: int,
+        reply_to: ChatMessage | None = None,
+    ) -> ChatMessage | None:
+        """One agent speaks: a normal turn, or an answer to a message that @mentioned it."""
         config = self.state.config
         message_id = new_id("msg")
-        self.events.emit(TurnStarted(message_id=message_id, speaker_id=agent.id, round_index=index))
+        self.events.emit(
+            TurnStarted(
+                message_id=message_id,
+                speaker_id=agent.id,
+                round_index=index,
+                reply_to=reply_to.id if reply_to else None,
+            )
+        )
 
         model = config.model_for(agent)
         reminders = self._reminders.pop(agent.id, [])
         request = ChatRequest(
             model=model.model,
-            messages=build_agent_messages(self.state, agent, index, current, turn, reminders),
+            messages=build_agent_messages(
+                self.state, agent, index, current, turn, reminders, reply_to
+            ),
             temperature=model.temperature,
         )
         try:
             spoken = await self._speak(message_id, agent.name, request, self._providers.get(model))
         except ProviderError as exc:
             self._turn_failed(agent, index, message_id, str(exc))
-            return
+            return None
 
         text = spoken.text
         notes = spoken.captured.get("notes", "")
@@ -291,7 +421,7 @@ class DiscussionEngine:
             text, notes = split_trailing_notes(text)
         if not text:
             self._turn_failed(agent, index, message_id, f"{agent.name} returned an empty answer")
-            return
+            return None
 
         self._failures = 0
         message = ChatMessage(
@@ -301,6 +431,7 @@ class DiscussionEngine:
             text=text,
             round_index=index,
             mentions=find_mentions(text, config.agents, exclude=agent.id),
+            reply_to=reply_to.id if reply_to else None,
             usage=_token_usage(spoken.usage),
         )
         self.state.messages.append(message)
@@ -310,6 +441,7 @@ class DiscussionEngine:
         self._check_rules(agent, current, message, index)
         if self._build_graph:
             self._graph_queue.put_nowait(message)  # mapped in the background
+        return message
 
     async def _speak(
         self, message_id: str, name: str, request: ChatRequest, provider: Provider
@@ -344,7 +476,9 @@ class DiscussionEngine:
     def _check_rules(
         self, agent: Persona, current: Round, message: ChatMessage, index: int
     ) -> None:
-        broken = check_rules(self.state.config, current, message.text)
+        broken = check_rules(
+            self.state.config, current, message.text, reply=message.reply_to is not None
+        )
         if not broken:
             return
         for rule in broken:
@@ -442,16 +576,25 @@ class DiscussionEngine:
 
     def _moderator_says(self, text: str, index: int | None) -> None:
         """A short moderator line that needs no model, such as a rule reminder."""
-        message = ChatMessage(
-            speaker_id=MODERATOR_ID,
-            speaker_kind=SpeakerKind.MODERATOR,
-            text=text,
-            round_index=index,
+        self._post_instant(
+            ChatMessage(
+                speaker_id=MODERATOR_ID,
+                speaker_kind=SpeakerKind.MODERATOR,
+                text=text,
+                round_index=index,
+            )
         )
+
+    def _post_instant(self, message: ChatMessage) -> None:
+        """Post a message that is already complete, with the same events as a streamed one."""
         self.events.emit(
-            TurnStarted(message_id=message.id, speaker_id=MODERATOR_ID, round_index=index)
+            TurnStarted(
+                message_id=message.id,
+                speaker_id=message.speaker_id,
+                round_index=message.round_index,
+            )
         )
-        self.events.emit(TokenDelta(message_id=message.id, text=text))
+        self.events.emit(TokenDelta(message_id=message.id, text=message.text))
         self.state.messages.append(message)
         self.events.emit(TurnCompleted(message=message))
 

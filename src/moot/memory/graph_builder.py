@@ -27,6 +27,7 @@ GRAPH_BUILDER_INTRO = "You map the arguments in a moderated discussion."
 
 MAX_POINT_WORDS = 30
 MAX_POINT_CHARS = 300
+MAX_QUESTION_CHARS = 400  # how much of the question a reply answers is shown
 
 # Which links may connect which kinds of points: (allowed sources, allowed targets).
 LINK_RULES: dict[EdgeType, tuple[frozenset[NodeType], frozenset[NodeType]]] = {
@@ -164,6 +165,13 @@ class GraphBuilder:
             + ("\n".join(lines) if lines else "None yet.")
             + f'\n\nNew message from {speaker}{round_label}:\n"""\n{message.text}\n"""'
         )
+        question = next((m for m in state.messages if m.id == message.reply_to), None)
+        if question is not None:
+            asker = self._speaker(state, question.speaker_id)
+            user += (
+                f"\n\nThis message answers {asker}, who asked:\n"
+                f'"""\n{question.text[:MAX_QUESTION_CHARS]}\n"""'
+            )
         system = SYSTEM_PROMPT.replace("{max_points}", str(self.max_points))
         return [Message("system", system), Message("user", user)], refs
 
@@ -248,13 +256,7 @@ class GraphBuilder:
 
     @staticmethod
     def _speaker(state: SessionState, speaker_id: str | None) -> str:
-        config = state.config
-        for agent in config.agents:
-            if agent.id == speaker_id:
-                return agent.name
-        if speaker_id == "user":
-            return "User"
-        return config.moderator_name
+        return state.config.speaker_label(speaker_id)
 
 
 __all__ = [

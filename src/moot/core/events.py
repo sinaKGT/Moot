@@ -52,6 +52,7 @@ class TurnStarted(EventBase):
     message_id: str
     speaker_id: str
     round_index: int | None = None
+    reply_to: str | None = Field(default=None, description="the message this turn answers")
 
 
 class TokenDelta(EventBase):

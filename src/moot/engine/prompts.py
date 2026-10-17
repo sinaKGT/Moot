@@ -143,6 +143,7 @@ def turn_prompt(
     current: Round,
     turn: int,
     reminders: list[str] | None = None,
+    reply_to: ChatMessage | None = None,
 ) -> str:
     """The user message: memory of the discussion, briefing, and what to do now."""
     config = state.config
@@ -182,9 +183,23 @@ def turn_prompt(
             "This round is blind: you cannot see the other participants' answers in it, "
             "and they cannot see yours until it ends."
         )
-    if current.turns_per_agent > 1:
-        lines.append(f"This is your turn {turn + 1} of {current.turns_per_agent} in this round.")
-    lines.append(f"Instruction: {current.instruction}")
+    if reply_to is not None:
+        asker = speaker_name(config, reply_to)
+        lines.append(
+            f'Instruction: {asker} asked you directly: "{reply_to.text}" '
+            f"Answer {asker} first, directly and briefly."
+        )
+    else:
+        if current.turns_per_agent > 1:
+            lines.append(
+                f"This is your turn {turn + 1} of {current.turns_per_agent} in this round."
+            )
+        lines.append(f"Instruction: {current.instruction}")
+        if current.mentions_allowed and not current.blind:
+            lines.append(
+                "You may put one direct question to another participant by writing @Name; "
+                "they will answer right after you."
+            )
     limit = current.max_words or config.rules.max_words_per_turn
     if limit:
         lines.append(f"Use at most {limit} words (not counting your private notes).")
@@ -200,8 +215,9 @@ def build_agent_messages(
     current: Round,
     turn: int,
     reminders: list[str] | None = None,
+    reply_to: ChatMessage | None = None,
 ) -> list[Message]:
     return [
         Message("system", persona_prompt(state.config, agent)),
-        Message("user", turn_prompt(state, agent, round_index, current, turn, reminders)),
+        Message("user", turn_prompt(state, agent, round_index, current, turn, reminders, reply_to)),
     ]

@@ -27,14 +27,21 @@ def is_yes_no_topic(topic: str) -> bool:
     return bool(_YES_NO_TOPIC.match(topic))
 
 
-def check_rules(config: SessionConfig, current: Round, text: str) -> list[str]:
-    """The rules an answer clearly broke, worded as reminders."""
+def check_rules(
+    config: SessionConfig, current: Round, text: str, *, reply: bool = False
+) -> list[str]:
+    """The rules an answer clearly broke, worded as reminders.
+
+    A reply to a direct question is not held to the answer-first rule, which is about the
+    topic question.
+    """
     broken = []
     limit = current.max_words or config.rules.max_words_per_turn
     if limit and word_count(text) > limit * WORD_LIMIT_TOLERANCE:
         broken.append(f"Use at most {limit} words.")
     if (
-        RulePreset.ANSWER_FIRST in config.rules.presets
+        not reply
+        and RulePreset.ANSWER_FIRST in config.rules.presets
         and is_yes_no_topic(config.topic)
         and not _ANSWER_START.match(text)
     ):

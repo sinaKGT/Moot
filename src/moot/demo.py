@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import sys
+import threading
 from typing import TextIO
 
 from moot.console import ConsoleRenderer
@@ -61,11 +64,35 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
         round_plan=RoundPlan(
             rounds=[
                 Round(type=RoundType.OPENING),
-                Round(type=RoundType.CHALLENGE, speaking_order=SpeakingOrder.MODERATOR),
+                Round(
+                    type=RoundType.CHALLENGE,
+                    speaking_order=SpeakingOrder.MODERATOR,
+                    mentions_allowed=True,
+                ),
             ]
         ),
         default_model=model,
     )
+
+
+def listen_to_terminal(
+    engine: DiscussionEngine, loop: asyncio.AbstractEventLoop, lines: TextIO | None = None
+) -> threading.Thread:
+    """Post each line typed in the terminal to the discussion, from a background thread."""
+
+    def post(text: str) -> None:
+        with contextlib.suppress(RuntimeError, ValueError):  # finished, or an empty line
+            engine.say(text)
+
+    def read() -> None:
+        for line in lines or sys.stdin:
+            if line.strip():
+                with contextlib.suppress(RuntimeError):  # the event loop has closed
+                    loop.call_soon_threadsafe(post, line)
+
+    thread = threading.Thread(target=read, name="moot-terminal-input", daemon=True)
+    thread.start()
+    return thread
 
 
 async def run_in_console(
@@ -75,10 +102,21 @@ async def run_in_console(
     out: TextIO | None = None,
     color: bool | None = None,
     show_map: bool = True,
+    interactive: bool = False,
 ) -> str:
-    """Run a session while printing it; return how it ended ("completed", "stopped", "error")."""
+    """Run a session while printing it; return how it ended ("completed", "stopped", "error").
+
+    With `interactive`, every line typed in the terminal is posted to the discussion.
+    """
     engine = DiscussionEngine(state, providers=providers)
     renderer = ConsoleRenderer(state.config, out=out, color=color, state=state)
+    if interactive:
+        names = " or ".join(f"@{agent.name}" for agent in state.config.agents[:2])
+        renderer.hint(
+            f"Type a message and press Enter at any time to join in; write {names} "
+            "to ask one of them directly."
+        )
+        listen_to_terminal(engine, asyncio.get_running_loop())
     follower = asyncio.create_task(renderer.follow(engine.events.subscribe()))
     try:
         await engine.run()

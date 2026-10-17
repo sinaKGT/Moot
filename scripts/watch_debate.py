@@ -94,7 +94,7 @@ def main() -> int:
 
     state = SessionState.new(demo_config(topic, model, background))
     try:
-        reason = asyncio.run(run_in_console(state))
+        reason = asyncio.run(run_in_console(state, interactive=sys.stdin.isatty()))
     except KeyboardInterrupt:
         print("\nStopped.")
         return 1

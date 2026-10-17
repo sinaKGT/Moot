@@ -29,6 +29,10 @@ Copy `.env.example` to `.env` and add your OpenRouter key, then double-click
 Double-click `watch-debate.bat`, type a topic and pick a model. Two agents argue for
 and against it over an opening round and a challenge round.
 
+You can join in while they talk: type a message and press Enter. Write `@Ava` or `@Ben`
+to ask one of them directly; they answer right away. In the challenge round the agents
+can also @ each other.
+
 ## Project layout
 
 ```
