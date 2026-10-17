@@ -24,6 +24,11 @@ uv run ruff check .      # lint
 Copy `.env.example` to `.env` and add your OpenRouter key, then double-click
 `try-moot.bat`. It checks OpenRouter, and Ollama / LM Studio if they are running.
 
+## Watch a debate
+
+Double-click `watch-debate.bat`, type a topic and pick a model. Two agents argue for
+and against it over an opening round and a challenge round.
+
 ## Project layout
 
 ```

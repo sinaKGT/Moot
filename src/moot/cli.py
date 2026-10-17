@@ -8,6 +8,8 @@ import sys
 from collections.abc import Sequence
 
 from moot import __version__
+from moot.core import ModelRef, SessionState
+from moot.demo import DEFAULT_OPENROUTER_MODEL, DEMO_TOPIC, demo_config, run_in_console
 from moot.providers import (
     PRESETS,
     ChatRequest,
@@ -41,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     ask.add_argument("--temperature", type=float, help="sampling temperature, e.g. 0.7")
     ask.add_argument("--base-url", help="use a different address for the provider")
 
+    debate = commands.add_parser("debate", help="watch two agents debate a topic (short demo)")
+    debate.add_argument("--topic", default=DEMO_TOPIC, help="what to debate")
+    debate.add_argument("--provider", default="openrouter", help="provider id (default openrouter)")
+    debate.add_argument("--model", help="model id (OpenRouter defaults to a free model)")
+    debate.add_argument("--no-color", action="store_true", help="plain text output")
+
     return parser
 
 
@@ -57,6 +65,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_cmd_models(args))
     if args.command == "ask":
         return asyncio.run(_cmd_ask(args))
+    if args.command == "debate":
+        return _cmd_debate(args)
 
     print(f"Moot {__version__}: the discussion engine is not built yet. Try `moot --help`.")
     return 0
@@ -133,6 +143,24 @@ async def _cmd_ask(args: argparse.Namespace) -> int:
     if usage:
         print(f"[tokens: {usage.prompt_tokens} in, {usage.completion_tokens} out]", file=sys.stderr)
     return 0
+
+
+def _cmd_debate(args: argparse.Namespace) -> int:
+    if args.provider not in PRESETS:
+        print(f"Error: unknown provider '{args.provider}'.", file=sys.stderr)
+        return 2
+    model = args.model or (DEFAULT_OPENROUTER_MODEL if args.provider == "openrouter" else None)
+    if model is None:
+        print(f"Error: choose a model for {args.provider} with --model.", file=sys.stderr)
+        return 2
+
+    state = SessionState.new(demo_config(args.topic, ModelRef(provider=args.provider, model=model)))
+    try:
+        reason = asyncio.run(run_in_console(state, color=False if args.no_color else None))
+    except KeyboardInterrupt:
+        print("\nStopped.", file=sys.stderr)
+        return 130
+    return 0 if reason == "completed" else 1
 
 
 def _tolerate_unprintable_characters() -> None:

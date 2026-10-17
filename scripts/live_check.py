@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from moot import __version__
+from moot.envfile import load_env_file
 from moot.providers import (
     ChatRequest,
     Message,
@@ -49,20 +50,6 @@ class Result:
     name: str
     status: str  # PASS, SKIP or FAIL
     detail: str
-
-
-def load_env_file(path: Path) -> None:
-    """Load KEY=VALUE lines into the environment; variables already set are kept."""
-    if not path.exists():
-        return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key, value = key.strip(), value.strip().strip("\"'")
-        if key and key not in os.environ:
-            os.environ[key] = value
 
 
 async def stream_answer(provider: OpenAICompatibleProvider, model: str) -> tuple[str, str]:

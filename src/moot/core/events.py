@@ -118,6 +118,7 @@ class ErrorEvent(EventBase):
     type: Literal["error"] = "error"
     message: str
     agent_id: str | None = None
+    message_id: str | None = Field(default=None, description="the turn that failed, if any")
 
 
 Event = Annotated[

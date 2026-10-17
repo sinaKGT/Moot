@@ -1,0 +1,121 @@
+"""Print a discussion to the terminal as it happens."""
+
+from __future__ import annotations
+
+import os
+import sys
+from collections.abc import AsyncIterator
+from typing import TextIO
+
+from moot.core import Persona, SessionConfig, SpeakerKind
+from moot.core.events import (
+    ErrorEvent,
+    Event,
+    RoundStarted,
+    SessionEnded,
+    SessionPaused,
+    SessionResumed,
+    SessionStarted,
+    TokenDelta,
+    TurnCompleted,
+    TurnStarted,
+)
+
+RESET = "\x1b[0m"
+BOLD = "\x1b[1m"
+DIM = "\x1b[2m"
+RED = "\x1b[31m"
+
+END_TEXT = {
+    "completed": "Discussion finished.",
+    "stopped": "Discussion stopped.",
+    "error": "Discussion ended because of errors.",
+}
+
+
+def enable_windows_ansi() -> None:
+    """Turn on colour codes in the classic Windows console (newer terminals already have them)."""
+    if os.name == "nt":
+        os.system("")
+
+
+class ConsoleRenderer:
+    def __init__(
+        self, config: SessionConfig, *, out: TextIO | None = None, color: bool | None = None
+    ) -> None:
+        self.config = config
+        self.out = out or sys.stdout
+        self.color = self.out.isatty() if color is None else color
+        if self.color:
+            enable_windows_ansi()
+        self._agents = {agent.id: agent for agent in config.agents}
+
+    async def follow(self, events: AsyncIterator[Event]) -> None:
+        async for event in events:
+            self.handle(event)
+
+    def handle(self, event: Event) -> None:
+        match event:
+            case SessionStarted():
+                self._header()
+            case RoundStarted(round_index=index):
+                current = self.config.round_plan.rounds[index]
+                title = f"── Round {index + 1} of {len(self.config.round_plan)}: {current.name} ──"
+                self._write(
+                    f"\n{self._style(BOLD, title)}\n{self._style(DIM, current.instruction)}\n"
+                )
+            case TurnStarted(speaker_id=speaker_id):
+                self._write(f"\n{self._speaker(speaker_id)}: ")
+            case TokenDelta(text=text):
+                self._write(text)
+            case TurnCompleted(message=message) if message.speaker_kind is SpeakerKind.SYSTEM:
+                self._write(f"\n{self._style(DIM, '· ' + message.text)}\n")
+            case TurnCompleted(message=message):
+                usage = message.usage
+                tokens = (
+                    f"  [{usage.prompt_tokens} in / {usage.completion_tokens} out tokens]"
+                    if usage
+                    else ""
+                )
+                self._write(f"\n{self._style(DIM, tokens)}\n" if tokens else "\n")
+            case ErrorEvent(agent_id=None, message=text):
+                self._write(f"\n{self._style(RED, 'Error: ' + text)}\n")
+            case SessionPaused():
+                self._write(f"\n{self._style(DIM, '· Paused')}\n")
+            case SessionResumed():
+                self._write(f"\n{self._style(DIM, '· Resumed')}\n")
+            case SessionEnded(reason=reason):
+                self._write(f"\n{self._style(BOLD, END_TEXT[reason])}\n")
+            case _:
+                pass
+
+    def _header(self) -> None:
+        config = self.config
+        people = ", ".join(self._agent_label(agent) for agent in config.agents)
+        self._write(
+            f"{self._style(BOLD, 'Topic:')} {config.topic}\n"
+            f"{self._style(BOLD, 'Participants:')} {people}\n"
+            f"{self._style(BOLD, 'Moderator:')} {config.moderator_name}\n"
+        )
+
+    def _agent_label(self, agent: Persona) -> str:
+        name = self._style(self._rgb(agent.color), agent.name)
+        return f"{name} ({agent.role})" if agent.role else name
+
+    def _speaker(self, speaker_id: str) -> str:
+        agent = self._agents.get(speaker_id)
+        if agent is None:
+            return self._style(BOLD, self.config.moderator_name)
+        return self._style(BOLD + self._rgb(agent.color), agent.name)
+
+    def _style(self, code: str, text: str) -> str:
+        return f"{code}{text}{RESET}" if self.color and text else text
+
+    @staticmethod
+    def _rgb(hex_color: str) -> str:
+        red, green, blue = (int(hex_color[i : i + 2], 16) for i in (1, 3, 5))
+        return f"\x1b[38;2;{red};{green};{blue}m"
+
+    def _write(self, text: str) -> None:
+        self.out.write(text)
+        self.out.flush()
