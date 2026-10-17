@@ -98,7 +98,7 @@ Legend: **Must** = in v1 · **Should** = v1 if it stays simple · **Later** = v2
 
 **Shared argument graph (public record)**
 - **Must** — After each turn, a graph builder step turns the message into nodes and links:
-  - Nodes: topic, sub-questions, claims, evidence/sources, questions, concessions, votes
+  - Nodes: topic, sub-questions, claims, evidence/sources, questions, concessions (votes are stored with their polls and included in briefings)
   - Links: supports, challenges, answers, refines, concedes to, directed at
   - Every node records who said it and in which round
 - **Must** — Tracks status: unanswered questions, challenges not yet rebutted, points conceded, open sub-questions
