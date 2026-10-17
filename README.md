@@ -19,6 +19,11 @@ uv run pytest            # run the tests
 uv run ruff check .      # lint
 ```
 
+## Live check
+
+Copy `.env.example` to `.env` and add your OpenRouter key, then double-click
+`try-moot.bat`. It checks OpenRouter, and Ollama / LM Studio if they are running.
+
 ## Project layout
 
 ```
@@ -31,5 +36,6 @@ src/moot/
   tools/       built-in tools and MCP
   server/      web API and live event stream; serves the UI
 tests/         automated tests
+scripts/       developer scripts (live check)
 docs/          spec and design notes
 ```
