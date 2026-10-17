@@ -226,7 +226,11 @@ def test_extraction_ignores_unknown_fields_but_rejects_unknown_types():
 def run_engine(script, graph_delay=0.0):
     state = make_state()
     provider = FakeProvider(script, graph_delay=graph_delay)
-    engine = DiscussionEngine(state, providers=ProviderPool(factory=lambda preset_id: provider))
+    engine = DiscussionEngine(
+        state,
+        providers=ProviderPool(factory=lambda preset_id: provider),
+        moderator_enabled=False,
+    )
     asyncio.run(engine.run())
     return state, engine, provider
 
@@ -361,7 +365,11 @@ def test_stopping_drops_pending_graph_work():
 
     state = make_state()
     provider = FakeProvider(default_script, graph_delay=5)
-    engine = DiscussionEngine(state, providers=ProviderPool(factory=lambda preset_id: provider))
+    engine = DiscussionEngine(
+        state,
+        providers=ProviderPool(factory=lambda preset_id: provider),
+        moderator_enabled=False,
+    )
 
     async def scenario():
         async def watch():

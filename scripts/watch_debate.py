@@ -13,8 +13,9 @@ from pathlib import Path
 
 from moot.core import ModelRef, SessionState
 from moot.demo import DEFAULT_OPENROUTER_MODEL, DEMO_TOPIC, demo_config, run_in_console
+from moot.engine.moderator import check_topic
 from moot.envfile import load_env_file
-from moot.providers import ProviderError, create_provider
+from moot.providers import ProviderError, StructuredOutputError, create_provider
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -38,6 +39,16 @@ def model_choices() -> list[tuple[str, ModelRef]]:
         for model in asyncio.run(local_models(preset_id)):
             choices.append((f"{label}: {model}", ModelRef(provider=preset_id, model=model)))
     return choices
+
+
+async def moderator_question(topic: str, model: ModelRef) -> str | None:
+    """The moderator's clarifying question if the topic is unclear, else None."""
+    async with create_provider(model.provider) as provider:
+        try:
+            check = await check_topic(topic, "", provider, model)
+        except (ProviderError, StructuredOutputError):
+            return None
+    return check.question.strip() if not check.clear and check.question.strip() else None
 
 
 def ask_choice(choices: list[tuple[str, ModelRef]]) -> ModelRef:
@@ -70,9 +81,18 @@ def main() -> int:
         )
         return 1
     model = ask_choice(choices)
+
+    print("\nThe moderator is reading the topic...")
+    background = ""
+    question = asyncio.run(moderator_question(topic, model))
+    if question:
+        print(f"Moderator: {question}")
+        answer = input("> ").strip()
+        if answer:
+            background = f"The user clarified the topic: {answer}"
     print()
 
-    state = SessionState.new(demo_config(topic, model))
+    state = SessionState.new(demo_config(topic, model, background))
     try:
         reason = asyncio.run(run_in_console(state))
     except KeyboardInterrupt:

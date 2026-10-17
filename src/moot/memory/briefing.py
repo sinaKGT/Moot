@@ -138,3 +138,12 @@ def earlier_points(
         and node.type in (NodeType.CLAIM, NodeType.EVIDENCE, NodeType.CONCESSION)
         and _visible(node, agent, hidden_round)
     ]
+
+
+def pending_items(state: SessionState, agent: Persona, hidden_round: int | None = None) -> int:
+    """How many challenges and questions aimed at this agent it hasn't dealt with."""
+    return sum(
+        1
+        for line in attention_lines(state, agent, hidden_round)
+        if not line.startswith("- Point you haven't answered")
+    )

@@ -16,6 +16,7 @@ from moot.core import (
     SessionConfig,
     SessionRules,
     SessionState,
+    SpeakingOrder,
     Traits,
 )
 from moot.core.events import SessionEnded
@@ -25,10 +26,11 @@ DEMO_TOPIC = "Should cities ban private cars from their centres?"
 DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 
-def demo_config(topic: str, model: ModelRef) -> SessionConfig:
+def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionConfig:
     """Two agents on opposite sides, an opening round and a challenge round."""
     return SessionConfig(
         topic=topic,
+        background=background,
         agents=[
             Persona(
                 name="Ava",
@@ -57,7 +59,10 @@ def demo_config(topic: str, model: ModelRef) -> SessionConfig:
             max_words_per_turn=120,
         ),
         round_plan=RoundPlan(
-            rounds=[Round(type=RoundType.OPENING), Round(type=RoundType.CHALLENGE)]
+            rounds=[
+                Round(type=RoundType.OPENING),
+                Round(type=RoundType.CHALLENGE, speaking_order=SpeakingOrder.MODERATOR),
+            ]
         ),
         default_model=model,
     )

@@ -1,6 +1,6 @@
 """Discussion memory: shared argument graph, private notebooks, agent briefings."""
 
-from moot.memory.briefing import build_briefing, earlier_points
+from moot.memory.briefing import attention_lines, build_briefing, earlier_points, pending_items
 from moot.memory.graph_builder import (
     GRAPH_BUILDER_INTRO,
     LINK_RULES,
@@ -28,8 +28,10 @@ __all__ = [
     "NotesUpdate",
     "apply_notes",
     "argument_map",
+    "attention_lines",
     "build_briefing",
     "earlier_points",
     "parse_notes",
+    "pending_items",
     "split_trailing_notes",
 ]

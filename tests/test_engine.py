@@ -14,6 +14,7 @@ from moot.core import (
     RoundPlan,
     RoundType,
     SessionConfig,
+    SessionRules,
     SessionState,
     SessionStatus,
     SpeakerKind,
@@ -40,6 +41,7 @@ def make_state(rounds: list[Round] | None = None) -> SessionState:
         round_plan=RoundPlan(
             rounds=rounds or [Round(type=RoundType.OPENING), Round(type=RoundType.CHALLENGE)]
         ),
+        rules=SessionRules(presets=[]),
         default_model=MODEL,
     )
     return SessionState.new(config)
@@ -49,6 +51,7 @@ def make_engine(state, provider=None, build_graph=False, **kwargs):
     """Engine with a fake provider. The graph builder is off here; see test_graph_builder."""
     provider = provider or FakeProvider()
     pool = ProviderPool(factory=lambda preset_id: provider)
+    kwargs.setdefault("moderator_enabled", False)  # the moderator is tested in test_moderator
     engine = DiscussionEngine(state, providers=pool, build_graph=build_graph, **kwargs)
     return engine, provider
 

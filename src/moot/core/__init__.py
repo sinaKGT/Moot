@@ -36,13 +36,14 @@ from moot.core.round_plan import (
     classic_debate,
     quick_take,
 )
-from moot.core.rules import GLOBAL_RULES, RulePreset, SessionRules
+from moot.core.rules import GLOBAL_RULES, RULE_PRESET_TEXT, RulePreset, SessionRules
 from moot.core.session import SessionConfig, SessionState, SessionStatus
 
 __all__ = [
     "EVENT_ADAPTER",
     "GLOBAL_RULES",
     "MODERATOR_ID",
+    "RULE_PRESET_TEXT",
     "SYSTEM_ID",
     "TEMPLATES",
     "USER_ID",

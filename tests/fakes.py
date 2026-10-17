@@ -7,6 +7,13 @@ import json
 import re
 from collections.abc import AsyncIterator, Callable
 
+from moot.engine.moderator import (
+    OPENING_TASK,
+    REPORT_TASK,
+    SELECTION_TASK,
+    SUMMARY_TASK,
+    TOPIC_TASK,
+)
 from moot.memory import GRAPH_BUILDER_INTRO
 from moot.providers import ChatRequest, ChatResult, ModelInfo, StreamEnd, TextDelta, Usage
 
@@ -33,7 +40,30 @@ def graph_speaker(request: ChatRequest) -> str:
     return match.group(1) if match else "?"
 
 
+def moderator_reply(request: ChatRequest) -> list[str] | None:
+    """Canned answers to the moderator's prompts, or None if this isn't one."""
+    user = request.messages[-1].content
+    if TOPIC_TASK in user:
+        return ['{"clear": true}']
+    if "the moderator of a discussion" not in request.messages[0].content:
+        return None
+    if OPENING_TASK in user:
+        plan = {"subquestions": ["Is it healthy?", "Is it practical?"]}
+        return ["Welcome. We will ask:\n1. Is it healthy?\n", f"<plan>{json.dumps(plan)}</plan>"]
+    if SELECTION_TASK in user:
+        match = re.search(r"Who still has turns in this round:\n- ([^:]+):", user)
+        return [json.dumps({"next": match.group(1) if match else "?", "reason": "test choice"})]
+    if SUMMARY_TASK in user:
+        return ["Summary of the round."]
+    if REPORT_TASK in user:
+        return ["Answer: undecided."]
+    return None
+
+
 def default_script(request: ChatRequest) -> list[str]:
+    reply = moderator_reply(request)
+    if reply is not None:
+        return reply
     if is_graph_request(request):
         point = {"ref": "N1", "type": "claim", "text": f"{graph_speaker(request)} main point"}
         return [json.dumps({"nodes": [point], "links": []})]

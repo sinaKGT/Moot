@@ -230,7 +230,11 @@ def test_engine_hides_notes_and_updates_the_notebook():
 
     state = make_state([Round(type=RoundType.OPENING)])
     provider = FakeProvider(script)
-    engine = DiscussionEngine(state, providers=ProviderPool(factory=lambda preset_id: provider))
+    engine = DiscussionEngine(
+        state,
+        providers=ProviderPool(factory=lambda preset_id: provider),
+        moderator_enabled=False,
+    )
     asyncio.run(engine.run())
 
     ava, ben, _ = state.config.agents

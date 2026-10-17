@@ -7,13 +7,15 @@ import sys
 from collections.abc import AsyncIterator
 from typing import TextIO
 
-from moot.core import Persona, SessionConfig, SessionState, SpeakerKind
+from moot.core import HumanModerator, Persona, SessionConfig, SessionState, SpeakerKind
 from moot.core.events import (
     EngineNotice,
     ErrorEvent,
     Event,
+    ModeratorDecision,
     NotebookUpdated,
     RoundStarted,
+    RuleViolation,
     SessionEnded,
     SessionPaused,
     SessionResumed,
@@ -96,6 +98,15 @@ class ConsoleRenderer:
                     self._write(
                         f"{self._style(DIM, f'  → {notebook.verdict.upper()}, {sure}% sure')}\n"
                     )
+            case ModeratorDecision(next_speaker_id=speaker_id, reason=reason) if speaker_id:
+                name = self._agents[speaker_id].name if speaker_id in self._agents else speaker_id
+                line = f"· {self.config.moderator_name} gives the floor to {name}: {reason}"
+                self._write(f"\n{self._style(DIM, line)}\n")
+            case RuleViolation(agent_id=agent_id, rule=rule) if isinstance(
+                self.config.moderator, HumanModerator
+            ):
+                name = self._agents[agent_id].name if agent_id in self._agents else agent_id
+                self._write(f"{self._style(DIM, f'  ! Rule reminder for {name}: {rule}')}\n")
             case EngineNotice(message=text):
                 self._write(f"\n{self._style(DIM, '· ' + text)}\n")
             case SessionPaused():
