@@ -21,7 +21,7 @@ from moot.core import (
     SessionState,
     SpeakerKind,
 )
-from moot.memory import argument_map, attention_lines
+from moot.memory import alliance_lines, argument_map, attention_lines
 from moot.providers import ChatRequest, Message, Provider, complete_structured, extract_json_object
 
 OPENING_TASK = "Open the discussion."
@@ -132,9 +132,16 @@ class ModeratorBrain:
                 f"\n\nThen introduce the next round in one sentence: Round {round_index + 2}: "
                 f"{upcoming.name}. {upcoming.instruction}"
             )
+        alliances = alliance_lines(state)
+        alliance_part = (
+            "\n\nAlliances:\n" + "\n".join(alliances) + "\nMention new or broken alliances, "
+            "or allies who challenge each other, if there are any."
+            if alliances
+            else ""
+        )
         user = (
             f"Round {round_index + 1}: {current.name} {SUMMARY_TASK} What was said in it:\n\n"
-            f"{_transcript(config, said) or '(nothing)'}\n\n"
+            f"{_transcript(config, said) or '(nothing)'}{alliance_part}\n\n"
             "In at most 80 words, summarise the main points and where the participants clash, "
             "and name anything someone was asked but did not answer. Stay neutral."
             f"{next_round}"
@@ -212,6 +219,9 @@ class ModeratorBrain:
                 history.append(f"- {agent.name}: {steps}")
         if history:
             material.append("Positions over time:\n" + "\n".join(history))
+        alliances = alliance_lines(state)
+        if alliances:
+            material.append("Alliances:\n" + "\n".join(alliances))
         recent = state.messages[-RECENT_FOR_MODERATOR:]
         material.append(f"Last messages:\n{_transcript(config, recent)}")
         user = (
@@ -223,7 +233,9 @@ class ModeratorBrain:
             "Where they disagree\n"
             "Final positions: each participant's final answer and whether it changed\n"
             "Open questions\n"
-            "Stay neutral and base everything on what was said.\n\n" + "\n\n".join(material)
+            + ("Alliances: who teamed up, and whether the alliances held\n" if alliances else "")
+            + "Stay neutral and base everything on what was said.\n\n"
+            + "\n\n".join(material)
         )
         return [Message("system", self.system_prompt(config)), Message("user", user)]
 

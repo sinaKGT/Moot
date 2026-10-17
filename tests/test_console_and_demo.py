@@ -17,12 +17,14 @@ from moot.envfile import load_env_file
 MODEL = ModelRef(provider="fake", model="fake-model")
 
 
-def test_demo_config_has_two_opposing_agents():
+def test_demo_config_has_two_opposing_agents_and_an_undecided_one():
     config = demo_config("Test topic", MODEL)
-    assert [a.name for a in config.agents] == ["Ava", "Ben"]
+    assert [a.name for a in config.agents] == ["Ava", "Ben", "Cleo"]
     assert "in favour" in config.agents[0].viewpoint
     assert "against" in config.agents[1].viewpoint
-    assert len(config.round_plan) == 2
+    assert "undecided" in config.agents[2].viewpoint
+    assert [r.type for r in config.round_plan.rounds] == ["opening", "challenge", "closing"]
+    assert config.allow_alliances
 
 
 def test_run_in_console_prints_the_discussion():
@@ -35,8 +37,8 @@ def test_run_in_console_prints_the_discussion():
     text = out.getvalue()
     assert reason == "completed"
     assert "Topic: Should we test?" in text
-    assert "Participants: Ava (Advocate), Ben (Critic)" in text
-    assert "── Round 1 of 2: Opening statements ──" in text
+    assert "Participants: Ava (Advocate), Ben (Critic), Cleo (Pragmatist)" in text
+    assert "── Round 1 of 3: Opening statements ──" in text
     assert "Ava: Ava round 1" in text
     assert "Ben: Ben round 2" in text
     assert "[10 in / 5 out tokens]" in text

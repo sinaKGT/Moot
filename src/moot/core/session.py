@@ -42,6 +42,9 @@ class SessionConfig(MootModel):
     graph_builder_model: ModelRef | None = Field(
         default=None, description="model that turns messages into the argument graph"
     )
+    allow_alliances: bool = Field(
+        default=True, description="agents may openly propose, accept and leave alliances"
+    )
 
     @field_validator("topic")
     @classmethod

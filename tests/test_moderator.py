@@ -257,8 +257,8 @@ def test_rule_breaks_get_a_moderator_reminder_and_reach_the_next_prompt():
     reminders = [t for t in moderator_texts(state) if "a reminder" in t]
     assert reminders[0].startswith("Ava, a reminder: Start with a direct answer")
     ava_prompts = [r.messages[-1].content for r in provider.requests if speaker_of(r) == "Ava"]
-    assert "The moderator reminded you about your last answer:" not in ava_prompts[0]
-    assert "The moderator reminded you about your last answer:" in ava_prompts[1]
+    assert "About your last answer:" not in ava_prompts[0]
+    assert "About your last answer:" in ava_prompts[1]
     assert any(isinstance(e, RuleViolation) for e in engine.events.history)
 
 

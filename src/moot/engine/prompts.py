@@ -18,6 +18,7 @@ from moot.core import (
     SpeakerKind,
     Traits,
 )
+from moot.engine.alliances import ALLIANCE_INSTRUCTIONS
 from moot.memory import NOTES_INSTRUCTIONS, build_briefing, earlier_points
 from moot.providers import Message
 
@@ -174,7 +175,7 @@ def turn_prompt(
     if briefing:
         lines += ["", briefing]
     if reminders:
-        lines += ["", "The moderator reminded you about your last answer:"]
+        lines += ["", "About your last answer:"]
         lines += [f"- {reminder}" for reminder in reminders]
 
     lines += ["", f"Round {round_index + 1} of {len(config.round_plan)}: {current.name}"]
@@ -204,6 +205,8 @@ def turn_prompt(
     if limit:
         lines.append(f"Use at most {limit} words (not counting your private notes).")
     lines.append(f"It is your turn, {agent.name}.")
+    if config.allow_alliances and not current.blind:
+        lines += ["", ALLIANCE_INSTRUCTIONS]
     lines += ["", NOTES_INSTRUCTIONS]
     return "\n".join(lines)
 

@@ -1,13 +1,15 @@
 """Briefings: what an agent is reminded of before it speaks.
 
 Built from its private notebook and the shared argument graph: its own position, the
-challenges and questions aimed at it that it hasn't dealt with, and the strongest points
-it hasn't answered yet.
+challenges and questions aimed at it that it hasn't dealt with, the strongest points
+it hasn't answered yet, alliance invitations waiting for an answer, and who is allied
+with whom.
 """
 
 from __future__ import annotations
 
 from moot.core import EdgeType, Node, NodeType, Persona, SessionState
+from moot.memory.alignment import alliance_lines, invitation_lines
 
 MAX_ATTENTION_ITEMS = 3
 
@@ -109,6 +111,7 @@ def attention_lines(
     opposing.sort(key=lambda n: len(graph.incoming(n.id, EdgeType.SUPPORTS)), reverse=True)
     for node in opposing[:MAX_ATTENTION_ITEMS]:
         lines.append(f"- Point you haven't answered, from {who(node)}: {node.text}")
+    lines += invitation_lines(state, agent)
     return lines
 
 
@@ -121,6 +124,9 @@ def build_briefing(state: SessionState, agent: Persona, hidden_round: int | None
     attention = attention_lines(state, agent, hidden_round)
     if attention:
         sections.append("What needs your attention:\n" + "\n".join(attention))
+    alliances = alliance_lines(state, agent)
+    if alliances:
+        sections.append("Alliances (everyone can see these):\n" + "\n".join(alliances))
     return "\n\n".join(sections)
 
 

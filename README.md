@@ -26,8 +26,9 @@ Copy `.env.example` to `.env` and add your OpenRouter key, then double-click
 
 ## Watch a debate
 
-Double-click `watch-debate.bat`, type a topic and pick a model. Two agents argue for
-and against it over an opening round and a challenge round.
+Double-click `watch-debate.bat`, type a topic and pick a model. Ava argues for it, Ben
+against, and Cleo starts undecided, over an opening, a challenge and a closing round.
+Agents can form alliances; the end of the run shows the argument map and who backed whom.
 
 You can join in while they talk: type a message and press Enter. Write `@Ava` or `@Ben`
 to ask one of them directly; they answer right away. In the challenge round the agents

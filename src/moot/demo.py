@@ -30,7 +30,8 @@ DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 
 def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionConfig:
-    """Two agents on opposite sides, an opening round and a challenge round."""
+    """Ava (for), Ben (against) and Cleo (undecided, open to alliances), over an opening,
+    a challenge and a closing round."""
     return SessionConfig(
         topic=topic,
         background=background,
@@ -42,7 +43,7 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
                 viewpoint="You argue in favour of the proposal in the topic.",
                 motivation="Win the debate by building the strongest case for the proposal.",
                 thinking_style="Constructive: focuses on benefits and practical solutions.",
-                traits=Traits(persuadability=0.3, verbosity=0.4, alliance_openness=0.5),
+                traits=Traits(persuadability=0.3, verbosity=0.4, alliance_openness=0.7),
             ),
             Persona(
                 name="Ben",
@@ -54,7 +55,21 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
                     "Critical: finds concrete flaws, gives counter-examples and offers his own "
                     "alternative view."
                 ),
-                traits=Traits(persuadability=0.3, verbosity=0.4, alliance_openness=0.3),
+                traits=Traits(persuadability=0.3, verbosity=0.4, alliance_openness=0.5),
+            ),
+            Persona(
+                name="Cleo",
+                role="Pragmatist",
+                color="#a78bfa",
+                viewpoint=(
+                    "You start undecided and side with whichever arguments hold up best in "
+                    "practice."
+                ),
+                motivation=(
+                    "Reach the most workable answer, and team up with whoever argues for it."
+                ),
+                thinking_style="Practical: weighs costs, benefits and real-world examples.",
+                traits=Traits(persuadability=0.7, verbosity=0.4, alliance_openness=0.8),
             ),
         ],
         rules=SessionRules(
@@ -69,6 +84,7 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
                     speaking_order=SpeakingOrder.MODERATOR,
                     mentions_allowed=True,
                 ),
+                Round(type=RoundType.CLOSING),
             ]
         ),
         default_model=model,
@@ -125,5 +141,6 @@ async def run_in_console(
         await follower
     if show_map and state.messages:
         renderer.render_argument_map(state)
+        renderer.render_alliances(state)
     ended = [e for e in engine.events.history if isinstance(e, SessionEnded)]
     return ended[-1].reason if ended else "error"

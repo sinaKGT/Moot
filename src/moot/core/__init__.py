@@ -1,6 +1,12 @@
 """Data model: personas, session rules, round plan, argument graph, alliances, polls, events."""
 
-from moot.core.alliances import Alliance, AllianceError, AllianceStatus
+from moot.core.alliances import (
+    Alliance,
+    AllianceChange,
+    AllianceError,
+    AllianceStatus,
+    AllianceStep,
+)
 from moot.core.base import MootModel, new_id
 from moot.core.events import EVENT_ADAPTER, Event, parse_event
 from moot.core.graph import ArgumentGraph, Edge, EdgeType, GraphError, Node, NodeType
@@ -49,8 +55,10 @@ __all__ = [
     "USER_ID",
     "AIModerator",
     "Alliance",
+    "AllianceChange",
     "AllianceError",
     "AllianceStatus",
+    "AllianceStep",
     "ArgumentGraph",
     "ChatMessage",
     "Edge",

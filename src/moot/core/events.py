@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import Field, TypeAdapter
 
-from moot.core.alliances import Alliance
+from moot.core.alliances import Alliance, AllianceChange
 from moot.core.base import MootModel, utc_now
 from moot.core.messages import ChatMessage
 from moot.core.polls import Poll, PollResult
@@ -85,8 +85,11 @@ class NotebookUpdated(EventBase):
 
 class AllianceChanged(EventBase):
     type: Literal["alliance_changed"] = "alliance_changed"
-    change: Literal["proposed", "accepted", "refused", "left", "dissolved"]
-    agent_id: str
+    change: AllianceChange
+    agent_id: str | None = Field(description="who acted; None when the alliance just ended")
+    targets: list[str] = Field(default_factory=list, description="who was invited")
+    reason: str = ""
+    round_index: int | None = None
     alliance: Alliance
 
 

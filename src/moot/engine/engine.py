@@ -13,6 +13,7 @@ from moot.core import (
     SYSTEM_ID,
     USER_ID,
     AIModerator,
+    AllianceError,
     ChatMessage,
     HumanModerator,
     Node,
@@ -44,6 +45,7 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
 )
+from moot.engine.alliances import apply_alliance_action, parse_alliance_action
 from moot.engine.mentions import find_mentions
 from moot.engine.moderator import ModeratorBrain
 from moot.engine.pool import ProviderPool
@@ -439,6 +441,7 @@ class DiscussionEngine:
         self.events.emit(TurnCompleted(message=message))
         self._update_notebook(agent, notes, index)
         self._check_rules(agent, current, message, index)
+        self._alliance_action(agent, spoken.captured.get("alliance", ""), current, index)
         if self._build_graph:
             self._graph_queue.put_nowait(message)  # mapped in the background
         return message
@@ -448,7 +451,7 @@ class DiscussionEngine:
     ) -> _Spoken:
         """Stream an answer as TokenDelta events, hiding <think> blocks, private sections,
         a leading "Name:" and trailing blank lines."""
-        tags = TagFilter(capture=("notes", "plan"))
+        tags = TagFilter(capture=("notes", "plan", "alliance"))
         stripper = NamePrefixStripper(name)
         spaces = TrailingSpaceHolder()
         parts: list[str] = []
@@ -486,6 +489,27 @@ class DiscussionEngine:
         self._reminders.setdefault(agent.id, []).extend(broken)
         if self._moderator:
             self._moderator_says(f"{agent.name}, a reminder: {' '.join(broken)}", index)
+
+    def _alliance_action(self, agent: Persona, text: str, current: Round, index: int) -> None:
+        """Apply an alliance the agent proposed, accepted, refused or left. If it can't be
+        done, the agent is told why before its next turn."""
+        if not text.strip() or not self.state.config.allow_alliances or current.blind:
+            return
+        try:
+            action = parse_alliance_action(text)
+            changes = apply_alliance_action(self.state, agent, action, index)
+        except AllianceError as exc:
+            self._reminders.setdefault(agent.id, []).append(
+                f"Your alliance action could not be done: {exc}."
+            )
+            return
+        except ValueError:
+            self._reminders.setdefault(agent.id, []).append(
+                "Your alliance line could not be read; use exactly the form shown."
+            )
+            return
+        for change in changes:
+            self.events.emit(change)
 
     def _update_notebook(self, agent: Persona, notes: str, index: int) -> None:
         """Merge the agent's private notes; if they are missing or unreadable, keep the old ones."""

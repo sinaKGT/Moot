@@ -16,6 +16,7 @@ from moot.core import (
     SpeakerKind,
 )
 from moot.core.events import (
+    AllianceChanged,
     EngineNotice,
     ErrorEvent,
     Event,
@@ -31,7 +32,16 @@ from moot.core.events import (
     TurnCompleted,
     TurnStarted,
 )
-from moot.memory import argument_map
+from moot.memory import (
+    alliance_mismatches,
+    ended_line,
+    names_of,
+    pair_alignment,
+    topic_sides,
+)
+from moot.memory import (
+    argument_map as build_argument_map,
+)
 
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
@@ -119,6 +129,8 @@ class ConsoleRenderer:
             ):
                 name = self._agents[agent_id].name if agent_id in self._agents else agent_id
                 self._write(f"{self._style(DIM, f'  ! Rule reminder for {name}: {rule}')}\n")
+            case AllianceChanged() as change:
+                self._write(f"\n· {self._describe_alliance(change)}\n")
             case EngineNotice(message=text):
                 self._write(f"\n{self._style(DIM, '· ' + text)}\n")
             case SessionPaused():
@@ -135,7 +147,7 @@ class ConsoleRenderer:
 
     def render_argument_map(self, state: SessionState) -> None:
         """Print the claims, challenges, concessions and open questions from the graph."""
-        sections = argument_map(state).sections()
+        sections = build_argument_map(state).sections()
         self._write(f"\n{self._style(BOLD, '── Argument map ──')}\n")
         if not sections:
             self._write(f"{self._style(DIM, 'No points were recorded.')}\n")
@@ -144,6 +156,93 @@ class ConsoleRenderer:
             self._write(f"\n{self._style(BOLD, title)}\n")
             for item in items:
                 self._write(f"  • {item}\n")
+
+    def render_alliances(self, state: SessionState) -> None:
+        """Print declared alliances, who backed whom in the argument map, and sides."""
+        pairs = [p for p in pair_alignment(state) if p.interactions]
+        if not state.alliances and not pairs:
+            return
+        self._write(f"\n{self._style(BOLD, '── Alliances ──')}\n")
+        if state.alliances:
+            self._write(f"\n{self._style(BOLD, 'Declared')}\n")
+            for alliance in state.alliances:
+                goal = f": {alliance.goal}" if alliance.goal else ""
+                if alliance.status == "active":
+                    since = alliance.formed_round
+                    since_text = f" (since round {since + 1})" if since is not None else ""
+                    line = f"{names_of(state, alliance.members)}{since_text}{goal}"
+                elif alliance.status == "proposed":
+                    line = (
+                        f"{names_of(state, [alliance.proposed_by])} invited "
+                        f"{names_of(state, alliance.invited)}{goal} (no answer)"
+                    )
+                elif alliance.formed_round is not None:
+                    line = ended_line(state, alliance)
+                else:
+                    line = (
+                        f"{names_of(state, [alliance.proposed_by])}'s invitation{goal} "
+                        "was not taken up"
+                    )
+                self._write(f"  • {line}\n")
+        if pairs:
+            self._write(f"\n{self._style(BOLD, 'Who backed whom (from the argument map)')}\n")
+            for pair in pairs:
+                if pair.score >= 0.5:
+                    verdict = "backed each other"
+                elif pair.score <= -0.5:
+                    verdict = "opposed each other"
+                else:
+                    verdict = "mixed"
+                self._write(
+                    f"  • {names_of(state, [pair.first, pair.second])}: {verdict} "
+                    f"(support {pair.support:g}, challenge {pair.challenge:g})\n"
+                )
+        sides = {a: s for a, s in topic_sides(state).items() if s}
+        if sides:
+            listed = ", ".join(f"{state.config.speaker_label(a)} {s}" for a, s in sides.items())
+            self._write(f"\n{self._style(BOLD, 'Sides on the topic')}\n  {listed}\n")
+        for mismatch in alliance_mismatches(state):
+            times = round(mismatch.challenges)
+            self._write(
+                f"\n  ! {state.config.speaker_label(mismatch.challenger)} challenged their ally "
+                f"{state.config.speaker_label(mismatch.ally)} {times} "
+                f"time{'s' if times != 1 else ''} since they allied\n"
+            )
+
+    def _describe_alliance(self, event: AllianceChanged) -> str:
+        config = self.config
+        alliance = event.alliance
+        who = config.speaker_label(event.agent_id) if event.agent_id else ""
+        reason = f": {event.reason}" if event.reason else ""
+
+        def names(agent_ids: list[str]) -> str:
+            labels = [config.speaker_label(a) for a in agent_ids if a != event.agent_id]
+            return (
+                ", ".join(labels[:-1]) + " and " + labels[-1]
+                if len(labels) > 1
+                else "".join(labels)
+            )
+
+        match event.change:
+            case "proposed":
+                goal = f": {alliance.goal}" if alliance.goal else ""
+                return f"{who} proposes an alliance to {names(event.targets)}{goal}"
+            case "accepted":
+                return f"{who} joins the alliance with {names(alliance.members)}"
+            case "refused":
+                return f"{who} refuses the alliance with {names(alliance.members)}{reason}"
+            case "left" if alliance.members:
+                return f"{who} leaves the alliance with {names(alliance.members)}{reason}"
+            case "left":
+                return f"{who} withdraws the alliance proposal{reason}"
+            case _:
+                everyone = [config.speaker_label(a) for a in alliance.everyone]
+                joined = (
+                    ", ".join(everyone[:-1]) + " and " + everyone[-1]
+                    if len(everyone) > 1
+                    else "".join(everyone)
+                )
+                return f"The alliance of {joined} has ended"
 
     def _header(self) -> None:
         config = self.config
