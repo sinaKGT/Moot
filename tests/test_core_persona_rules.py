@@ -81,7 +81,15 @@ def test_rules_combine_global_presets_custom_and_length():
 
 
 def test_global_rules_always_apply():
-    assert SessionRules().all_rules() == list(GLOBAL_RULES)
+    assert SessionRules(presets=[]).all_rules() == list(GLOBAL_RULES)
+
+
+def test_answer_first_and_one_point_are_on_by_default():
+    rules = SessionRules()
+    assert rules.presets == [RulePreset.ANSWER_FIRST, RulePreset.ONE_POINT]
+    text = " ".join(rules.all_rules())
+    assert "Yes, No or I don't know" in text
+    assert "one main point per turn" in text
 
 
 def test_starter_personas_are_fresh_copies():

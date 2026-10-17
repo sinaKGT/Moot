@@ -16,6 +16,8 @@ GLOBAL_RULES: tuple[str, ...] = (
 
 
 class RulePreset(StrEnum):
+    ANSWER_FIRST = "answer_first"
+    ONE_POINT = "one_point"
     SHORT_ANSWERS = "short_answers"
     EVIDENCE_REQUIRED = "evidence_required"
     NO_REPETITION = "no_repetition"
@@ -24,6 +26,13 @@ class RulePreset(StrEnum):
 
 
 RULE_PRESET_TEXT: dict[RulePreset, str] = {
+    RulePreset.ANSWER_FIRST: (
+        "Start with a direct answer (Yes, No or I don't know, when the question allows it), "
+        "then explain briefly if needed."
+    ),
+    RulePreset.ONE_POINT: (
+        "Make one main point per turn and develop it, instead of listing several."
+    ),
     RulePreset.SHORT_ANSWERS: "Keep answers short and to the point.",
     RulePreset.EVIDENCE_REQUIRED: "Support your claims with evidence or clear reasoning.",
     RulePreset.NO_REPETITION: "Do not repeat points that have already been made.",
@@ -32,8 +41,11 @@ RULE_PRESET_TEXT: dict[RulePreset, str] = {
 }
 
 
+DEFAULT_PRESETS: tuple[RulePreset, ...] = (RulePreset.ANSWER_FIRST, RulePreset.ONE_POINT)
+
+
 class SessionRules(MootModel):
-    presets: list[RulePreset] = Field(default_factory=list)
+    presets: list[RulePreset] = Field(default_factory=lambda: list(DEFAULT_PRESETS))
     custom: list[str] = Field(default_factory=list)
     max_words_per_turn: int | None = Field(default=None, ge=10, le=2000)
 

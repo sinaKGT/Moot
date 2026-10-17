@@ -45,7 +45,7 @@ def test_config_defaults():
     assert isinstance(config.moderator, AIModerator)
     assert config.moderator_name == "Moderator"
     assert len(config.round_plan) == 5  # classic debate
-    assert config.rules.presets == []
+    assert [p.value for p in config.rules.presets] == ["answer_first", "one_point"]
 
 
 def test_model_resolution():

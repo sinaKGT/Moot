@@ -66,7 +66,7 @@ Legend: **Must** = in v1 · **Should** = v1 if it stays simple · **Later** = v2
 ### 3.4 Session setup: topic and rules
 - **Must** — Topic + optional background text or files
 - **Must** — Discussion rules applied to every agent, written freely (e.g. "answers must be logical and short", "max 80 words", "support claims with evidence")
-- **Must** — Rule presets to tick: Short answers, Evidence required, No repetition, Stay on topic, Formal tone; plus custom rules
+- **Must** — Rule presets to tick: Answer first (Yes / No / I don't know, then explain), One point per turn (these two on by default), Short answers, Evidence required, No repetition, Stay on topic, Formal tone; plus custom rules
 - **Must** — Moderator (AI or you) can flag a rule break; the agent must comply on its next turn
 - **Should** — Hard length limit per turn
 
@@ -117,7 +117,7 @@ Legend: **Must** = in v1 · **Should** = v1 if it stays simple · **Later** = v2
   - Current alliances and open polls
   - What has changed since its last turn
 - **Must** — The prompt is built from: persona + session rules + briefing + recent turns (no full transcript, so long discussions stay within model limits)
-- **Must** — Behaviour rules: refer to others' points by name, don't repeat yourself, answer what was asked, don't drift into agreement unless genuinely persuaded, explain any change of mind
+- **Must** — Behaviour rules: argue your own view (when disagreeing, give a reason, example or counter-argument instead of only asking for evidence), refer to others' points by name, don't repeat yourself, answer what was asked, don't drift into agreement unless genuinely persuaded, explain any change of mind
 - **Must** — Click an agent to see its notebook and how its view changed
 - **Should** — Argument map view (2D): explore the graph during and after the discussion
 - **Should** — Warning when two agents' stances have become near-identical

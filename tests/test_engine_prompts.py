@@ -75,6 +75,8 @@ def test_persona_prompt_contains_identity_setting_and_rules():
         "Other participants: Ben (Critic), Cleo",
         "- Keep answers short and to the point.",
         "- Be logical.",
+        "How to take part:",
+        "don't just ask for evidence",
         "Speak only as Ava.",
     ):
         assert expected in prompt
@@ -124,13 +126,16 @@ def test_turn_prompt_describes_the_round():
     assert "Nobody has spoken yet." in first
     assert "Round 1 of 2: Opening statements" in first
     assert "This round is blind" in first
-    assert "Use at most 100 words." in first
-    assert first.endswith("It is your turn, Ava. Reply with your contribution only.")
+    assert "Use at most 100 words (not counting your private notes)." in first
+    assert "It is your turn, Ava." in first
+    assert "<notes>" in first and first.rstrip().endswith(
+        "Use the participants' names exactly as written."
+    )
 
     free.max_words = 40
     later = turn_prompt(state, ava, 1, free, 1)
     assert "This is your turn 2 of 2 in this round." in later
-    assert "Use at most 40 words." in later
+    assert "Use at most 40 words" in later
     assert "blind" not in later
 
 

@@ -12,7 +12,10 @@ _STARTERS: tuple[Persona, ...] = (
         color="#f97316",
         role="Critical thinker",
         motivation="Get to the truth by testing every claim.",
-        thinking_style="Skeptical: questions assumptions and asks for evidence.",
+        thinking_style=(
+            "Skeptical: tests claims, points out concrete weaknesses and gives "
+            "counter-examples, always alongside a clear view of its own."
+        ),
         traits=Traits(persuadability=0.4, verbosity=0.4, alliance_openness=0.3),
     ),
     Persona(

@@ -12,6 +12,7 @@ from moot.core.events import (
     EngineNotice,
     ErrorEvent,
     Event,
+    NotebookUpdated,
     RoundStarted,
     SessionEnded,
     SessionPaused,
@@ -43,9 +44,15 @@ def enable_windows_ansi() -> None:
 
 class ConsoleRenderer:
     def __init__(
-        self, config: SessionConfig, *, out: TextIO | None = None, color: bool | None = None
+        self,
+        config: SessionConfig,
+        *,
+        out: TextIO | None = None,
+        color: bool | None = None,
+        state: SessionState | None = None,
     ) -> None:
         self.config = config
+        self.state = state
         self.out = out or sys.stdout
         self.color = self.out.isatty() if color is None else color
         if self.color:
@@ -82,6 +89,13 @@ class ConsoleRenderer:
                 self._write(f"\n{self._style(DIM, tokens)}\n" if tokens else "\n")
             case ErrorEvent(agent_id=None, message=text):
                 self._write(f"\n{self._style(RED, 'Error: ' + text)}\n")
+            case NotebookUpdated(agent_id=agent_id) if self.state is not None:
+                notebook = self.state.notebooks.get(agent_id)
+                if notebook and notebook.verdict:
+                    sure = round(notebook.confidence * 100)
+                    self._write(
+                        f"{self._style(DIM, f'  → {notebook.verdict.upper()}, {sure}% sure')}\n"
+                    )
             case EngineNotice(message=text):
                 self._write(f"\n{self._style(DIM, '· ' + text)}\n")
             case SessionPaused():

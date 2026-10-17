@@ -45,12 +45,15 @@ def demo_config(topic: str, model: ModelRef) -> SessionConfig:
                 color="#f97316",
                 viewpoint="You argue against the proposal in the topic.",
                 motivation="Win the debate by exposing the weaknesses of the proposal.",
-                thinking_style="Skeptical: questions assumptions and asks for evidence.",
+                thinking_style=(
+                    "Critical: finds concrete flaws, gives counter-examples and offers his own "
+                    "alternative view."
+                ),
                 traits=Traits(persuadability=0.3, verbosity=0.4, alliance_openness=0.3),
             ),
         ],
         rules=SessionRules(
-            presets=[RulePreset.SHORT_ANSWERS, RulePreset.EVIDENCE_REQUIRED],
+            presets=[RulePreset.ANSWER_FIRST, RulePreset.ONE_POINT, RulePreset.SHORT_ANSWERS],
             max_words_per_turn=120,
         ),
         round_plan=RoundPlan(
@@ -70,7 +73,7 @@ async def run_in_console(
 ) -> str:
     """Run a session while printing it; return how it ended ("completed", "stopped", "error")."""
     engine = DiscussionEngine(state, providers=providers)
-    renderer = ConsoleRenderer(state.config, out=out, color=color)
+    renderer = ConsoleRenderer(state.config, out=out, color=color, state=state)
     follower = asyncio.create_task(renderer.follow(engine.events.subscribe()))
     try:
         await engine.run()

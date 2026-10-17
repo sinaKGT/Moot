@@ -91,7 +91,7 @@ def test_tokens_stream_before_the_turn_completes():
 
     first_turn = engine.events.history[2:6]
     assert isinstance(first_turn[0], TurnStarted)
-    assert [e.text for e in first_turn[1:3]] == ["Ava ", "round 1"]
+    assert [e.text for e in first_turn[1:3]] == ["Ava", " round 1"]  # space waits for the next word
     assert all(isinstance(e, TokenDelta) for e in first_turn[1:3])
     assert isinstance(first_turn[3], TurnCompleted)
     assert first_turn[3].message.id == first_turn[0].message_id

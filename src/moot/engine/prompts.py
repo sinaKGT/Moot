@@ -1,7 +1,9 @@
 """Prompt building: what each agent is told before it speaks.
 
-This is the simple version for the engine core. Step 6 adds the briefing built from the
-argument graph and the agent's private notebook.
+System prompt: who the agent is, the setting, how to take part, and the rules.
+User prompt: a short memory of earlier points, the most recent messages, the agent's
+briefing (private notes plus what needs its attention), the round instruction, and how
+to write its private notes.
 """
 
 from __future__ import annotations
@@ -16,7 +18,21 @@ from moot.core import (
     SpeakerKind,
     Traits,
 )
+from moot.memory import NOTES_INSTRUCTIONS, build_briefing, earlier_points
 from moot.providers import Message
+
+RECENT_MESSAGES = 6
+MAX_EARLIER_POINTS = 12
+
+HOW_TO_TAKE_PART = (
+    "Argue your own view. When you disagree, say why with a reason, an example or a "
+    "counter-argument; don't just ask for evidence or say more research is needed.",
+    "Respond to what others actually said, and refer to them by name.",
+    "Answer questions put to you directly.",
+    "Don't repeat points you have already made.",
+    "Don't drift into agreement unless you are genuinely persuaded; if you change your mind, "
+    "say what changed it.",
+)
 
 
 def describe_traits(traits: Traits) -> list[str]:
@@ -71,7 +87,7 @@ def speaker_name(config: SessionConfig, message: ChatMessage) -> str:
 
 
 def persona_prompt(config: SessionConfig, agent: Persona) -> str:
-    """The system prompt: who the agent is, the setting, and the rules."""
+    """The system prompt: who the agent is, the setting, how to take part, and the rules."""
     lines: list[str] = []
     if agent.prompt_override:
         lines.append(agent.prompt_override.strip())
@@ -95,6 +111,8 @@ def persona_prompt(config: SessionConfig, agent: Persona) -> str:
         lines.append(f"Background: {config.background.strip()}")
     lines.append(f"Moderator: {moderator_label(config)}")
     lines.append(f"Other participants: {', '.join(others)}")
+    lines += ["", "How to take part:"]
+    lines += [f"- {rule}" for rule in HOW_TO_TAKE_PART]
     lines += ["", "Rules you must follow:"]
     lines += [f"- {rule}" for rule in config.rules.all_rules()]
     lines += [
@@ -121,16 +139,34 @@ def visible_messages(
 def turn_prompt(
     state: SessionState, agent: Persona, round_index: int, current: Round, turn: int
 ) -> str:
-    """The user message: the discussion so far, then what to do now."""
+    """The user message: memory of the discussion, briefing, and what to do now."""
     config = state.config
-    lines: list[str] = []
+    hidden_round = round_index if current.blind else None
     visible = visible_messages(state, agent, round_index, current)
-    if visible:
+    older, recent = visible[:-RECENT_MESSAGES], visible[-RECENT_MESSAGES:]
+
+    lines: list[str] = []
+    if older:
+        points = earlier_points(state, {m.id for m in older}, agent, hidden_round)
+        if points:
+            lines.append("Earlier in the discussion:")
+            lines += [f"- {point}" for point in points[-MAX_EARLIER_POINTS:]]
+        else:  # the argument graph hasn't caught up yet: fall back to shortened messages
+            lines.append("Earlier in the discussion:")
+            lines += [
+                f"- {speaker_name(config, m)}: {m.text[:200]}" for m in older[-MAX_EARLIER_POINTS:]
+            ]
+        lines += ["", "Recent messages:"]
+    elif recent:
         lines.append("Discussion so far:")
-        for message in visible:
-            lines += ["", f"{speaker_name(config, message)}: {message.text}"]
     else:
         lines.append("Nobody has spoken yet.")
+    for message in recent:
+        lines += ["", f"{speaker_name(config, message)}: {message.text}"]
+
+    briefing = build_briefing(state, agent, hidden_round)
+    if briefing:
+        lines += ["", briefing]
 
     lines += ["", f"Round {round_index + 1} of {len(config.round_plan)}: {current.name}"]
     if current.blind:
@@ -143,8 +179,9 @@ def turn_prompt(
     lines.append(f"Instruction: {current.instruction}")
     limit = current.max_words or config.rules.max_words_per_turn
     if limit:
-        lines.append(f"Use at most {limit} words.")
-    lines.append(f"It is your turn, {agent.name}. Reply with your contribution only.")
+        lines.append(f"Use at most {limit} words (not counting your private notes).")
+    lines.append(f"It is your turn, {agent.name}.")
+    lines += ["", NOTES_INSTRUCTIONS]
     return "\n".join(lines)
 
 

@@ -18,6 +18,7 @@ def shorten(text: str, limit: int = MAX_LINE_TEXT) -> str:
 
 @dataclass
 class ArgumentMap:
+    final_positions: list[str] = field(default_factory=list)
     positions: list[str] = field(default_factory=list)
     claims: list[str] = field(default_factory=list)
     challenges: list[str] = field(default_factory=list)
@@ -29,6 +30,7 @@ class ArgumentMap:
         return [
             (title, items)
             for title, items in (
+                ("Final positions", self.final_positions),
                 ("Positions", self.positions),
                 ("Claims", self.claims),
                 ("Challenges", self.challenges),
@@ -51,6 +53,14 @@ def argument_map(state: SessionState) -> ArgumentMap:
         return list(dict.fromkeys(items))
 
     result = ArgumentMap()
+
+    for agent in config.agents:
+        notebook = state.notebooks.get(agent.id)
+        if notebook and (notebook.verdict or notebook.stance):
+            verdict = notebook.verdict.upper() if notebook.verdict else "UNDECIDED"
+            stance = f": {shorten(notebook.stance)}" if notebook.stance else ""
+            sure = round(notebook.confidence * 100)
+            result.final_positions.append(f"{agent.name}: {verdict} ({sure}% sure){stance}")
 
     # Positions: supporting the topic = for the proposal, challenging it = against.
     for topic in graph.find(node_type=NodeType.TOPIC):

@@ -21,6 +21,7 @@ from moot.core.events import (
     EngineNotice,
     ErrorEvent,
     GraphUpdated,
+    NotebookUpdated,
     RoundEnded,
     RoundStarted,
     SessionEnded,
@@ -35,8 +36,8 @@ from moot.engine.mentions import find_mentions
 from moot.engine.pool import ProviderPool
 from moot.engine.prompts import build_agent_messages
 from moot.engine.stream import EventStream
-from moot.engine.text import NamePrefixStripper
-from moot.memory import GraphBuilder
+from moot.engine.text import NamePrefixStripper, TagFilter, TrailingSpaceHolder
+from moot.memory import GraphBuilder, apply_notes, parse_notes, split_trailing_notes
 from moot.providers import (
     ChatRequest,
     ProviderError,
@@ -171,21 +172,32 @@ class DiscussionEngine:
             messages=build_agent_messages(self.state, agent, index, current, turn),
             temperature=model.temperature,
         )
+        tags = TagFilter()  # hides <think> blocks, captures the private <notes>
         stripper = NamePrefixStripper(agent.name)
+        spaces = TrailingSpaceHolder()
         parts: list[str] = []
         usage: Usage | None = None
+
+        def show(text: str) -> None:
+            self._emit_text(message_id, spaces.feed(stripper.feed(tags.feed(text))), parts)
+
         try:
             async for event in self._providers.get(model).stream(request):
                 if isinstance(event, TextDelta):
-                    self._emit_text(message_id, stripper.feed(event.text), parts)
+                    show(event.text)
                 else:
                     usage = event.usage
-            self._emit_text(message_id, stripper.flush(), parts)
+            self._emit_text(message_id, spaces.feed(stripper.feed(tags.flush())), parts)
+            self._emit_text(message_id, spaces.feed(stripper.flush()), parts)
+            spaces.flush()
         except ProviderError as exc:
             self._turn_failed(agent, index, message_id, str(exc))
             return
 
         text = "".join(parts).strip()
+        notes = tags.captured.get("notes", "")
+        if not notes:
+            text, notes = split_trailing_notes(text)
         if not text:
             self._turn_failed(agent, index, message_id, f"{agent.name} returned an empty answer")
             return
@@ -206,8 +218,20 @@ class DiscussionEngine:
         )
         self.state.messages.append(message)
         self.events.emit(TurnCompleted(message=message))
+        self._update_notebook(agent, notes, index)
         if self._build_graph:
             self._graph_queue.put_nowait(message)  # mapped in the background
+
+    def _update_notebook(self, agent: Persona, notes: str, index: int) -> None:
+        """Merge the agent's private notes; if they are missing or unreadable, keep the old ones."""
+        if not notes.strip():
+            return
+        try:
+            update = parse_notes(notes)
+        except ValueError:
+            return
+        apply_notes(self.state, agent, update, index)
+        self.events.emit(NotebookUpdated(agent_id=agent.id))
 
     async def _graph_worker(self) -> None:
         """Map messages into the argument graph one at a time, in the order they were said,
@@ -233,8 +257,10 @@ class DiscussionEngine:
         if cancel:
             worker.cancel()
         else:
-            if self._graph_busy or not self._graph_queue.empty():
-                self.events.emit(EngineNotice(message="Finishing the argument map..."))
+            pending = self._graph_queue.qsize() + (1 if self._graph_busy else 0)
+            if pending:
+                left = f"{pending} message{'s' if pending > 1 else ''} left"
+                self.events.emit(EngineNotice(message=f"Finishing the argument map ({left})..."))
             self._graph_queue.put_nowait(None)
         with contextlib.suppress(asyncio.CancelledError):
             await worker
