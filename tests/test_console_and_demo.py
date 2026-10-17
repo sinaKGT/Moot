@@ -23,7 +23,7 @@ def test_demo_config_has_two_opposing_agents_and_an_undecided_one():
     assert "in favour" in config.agents[0].viewpoint
     assert "against" in config.agents[1].viewpoint
     assert "undecided" in config.agents[2].viewpoint
-    assert [r.type for r in config.round_plan.rounds] == ["opening", "challenge", "closing"]
+    assert [r.type for r in config.round_plan.rounds] == ["opening", "challenge", "closing", "vote"]
     assert config.allow_alliances
 
 
@@ -38,7 +38,7 @@ def test_run_in_console_prints_the_discussion():
     assert reason == "completed"
     assert "Topic: Should we test?" in text
     assert "Participants: Ava (Advocate), Ben (Critic), Cleo (Pragmatist)" in text
-    assert "── Round 1 of 3: Opening statements ──" in text
+    assert "── Round 1 of 4: Opening statements ──" in text
     assert "Ava: Ava round 1" in text
     assert "Ben: Ben round 2" in text
     assert "[10 in / 5 out tokens]" in text

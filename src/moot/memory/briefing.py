@@ -2,14 +2,15 @@
 
 Built from its private notebook and the shared argument graph: its own position, the
 challenges and questions aimed at it that it hasn't dealt with, the strongest points
-it hasn't answered yet, alliance invitations waiting for an answer, and who is allied
-with whom.
+it hasn't answered yet, alliance invitations waiting for an answer, who is allied
+with whom, and recent poll results.
 """
 
 from __future__ import annotations
 
 from moot.core import EdgeType, Node, NodeType, Persona, SessionState
 from moot.memory.alignment import alliance_lines, invitation_lines
+from moot.memory.votes import poll_lines
 
 MAX_ATTENTION_ITEMS = 3
 
@@ -127,6 +128,9 @@ def build_briefing(state: SessionState, agent: Persona, hidden_round: int | None
     alliances = alliance_lines(state, agent)
     if alliances:
         sections.append("Alliances (everyone can see these):\n" + "\n".join(alliances))
+    polls = poll_lines(state, agent)
+    if polls:
+        sections.append("Poll results (everyone can see these):\n" + "\n".join(polls))
     return "\n\n".join(sections)
 
 

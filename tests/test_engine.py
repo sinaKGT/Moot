@@ -225,13 +225,15 @@ def test_pause_and_resume():
     assert isinstance(engine.events.history[resumed_at], SessionResumed)
 
 
-def test_vote_round_is_skipped_with_a_notice():
+def test_vote_round_runs_a_poll():
     state = make_state([Round(type=RoundType.OPENING), Round(type=RoundType.VOTE)])
     engine, _ = make_engine(state)
     run(engine.run())
 
-    assert state.messages[-1].speaker_kind is SpeakerKind.SYSTEM
-    assert "Vote rounds are not available yet" in state.messages[-1].text
+    poll = state.polls[0]
+    ava, ben = state.config.agents
+    assert poll.votes == {ava.id: f"opt_{ben.id}", ben.id: f"opt_{ava.id}"}  # no self-votes
+    assert poll.round_index == 1
     assert engine.events.history[-1].reason == "completed"
 
 

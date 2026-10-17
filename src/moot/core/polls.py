@@ -79,6 +79,9 @@ class Poll(MootModel):
     status: PollStatus = PollStatus.OPEN
     opened_by: str
     round_index: int | None = None
+    previous_id: str | None = Field(
+        default=None, description="an earlier poll with the same question, to compare with"
+    )
 
     @classmethod
     def open(
@@ -88,6 +91,7 @@ class Poll(MootModel):
         *,
         opened_by: str,
         round_index: int | None = None,
+        previous_id: str | None = None,
     ) -> Poll:
         if spec.kind is PollKind.WINNER:
             options = [PollOption(id=f"opt_{a.id}", label=a.name, agent_id=a.id) for a in agents]
@@ -100,6 +104,7 @@ class Poll(MootModel):
             eligible_voters=[agent.id for agent in agents],
             opened_by=opened_by,
             round_index=round_index,
+            previous_id=previous_id,
         )
 
     def allowed_options(self, voter_id: str) -> list[PollOption]:

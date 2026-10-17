@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -19,6 +20,9 @@ from moot.core import (
     Node,
     NodeType,
     Persona,
+    Poll,
+    PollSpec,
+    PollStatus,
     Round,
     RoundType,
     SessionState,
@@ -27,6 +31,7 @@ from moot.core import (
     SpeakingOrder,
     TokenUsage,
     new_id,
+    winner_poll_spec,
 )
 from moot.core.events import (
     EngineNotice,
@@ -34,6 +39,8 @@ from moot.core.events import (
     GraphUpdated,
     ModeratorDecision,
     NotebookUpdated,
+    PollClosed,
+    PollOpened,
     RoundEnded,
     RoundStarted,
     RuleViolation,
@@ -44,6 +51,7 @@ from moot.core.events import (
     TokenDelta,
     TurnCompleted,
     TurnStarted,
+    VoteCast,
 )
 from moot.engine.alliances import apply_alliance_action, parse_alliance_action
 from moot.engine.mentions import find_mentions
@@ -53,6 +61,13 @@ from moot.engine.prompts import build_agent_messages
 from moot.engine.rule_checks import check_rules
 from moot.engine.stream import EventStream
 from moot.engine.text import NamePrefixStripper, TagFilter, TrailingSpaceHolder
+from moot.engine.voting import (
+    VoteChoice,
+    match_choice,
+    parse_poll_spec,
+    retry_message,
+    vote_messages,
+)
 from moot.memory import GraphBuilder, apply_notes, parse_notes, pending_items, split_trailing_notes
 from moot.providers import (
     ChatRequest,
@@ -62,6 +77,7 @@ from moot.providers import (
     StructuredOutputError,
     TextDelta,
     Usage,
+    complete_structured,
 )
 
 DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
@@ -70,6 +86,12 @@ DEFAULT_MAX_REPLY_CHAIN = 2  # a question, its answer, and one answer back
 
 class _TooManyFailures(Exception):
     pass
+
+
+@dataclass
+class _UserMessage:
+    text: str
+    to: list[str]
 
 
 @dataclass
@@ -89,7 +111,8 @@ class DiscussionEngine:
     """Runs one session. Create it, subscribe to `events`, then `await run()`.
 
     `pause()`, `resume()` and `stop()` can be called while it runs; they take effect
-    between turns. `say()` posts a message from the user between turns, also while paused.
+    between turns. `say()` posts a message from the user and `open_poll()` runs a poll,
+    between turns and also while paused.
 
     @mentions: when an agent writes "@Ben ...?" in a round that allows mentions, Ben answers
     straight away, before the round goes on. A reply can lead to one answer back
@@ -110,6 +133,7 @@ class DiscussionEngine:
         moderator_enabled: bool = True,
         max_reply_chain: int = DEFAULT_MAX_REPLY_CHAIN,
         max_replies_per_round: int | None = None,
+        max_moderator_polls: int = 1,
     ) -> None:
         self.state = state
         self.events = events or EventStream()
@@ -131,7 +155,9 @@ class DiscussionEngine:
         self._max_reply_chain = max_reply_chain
         self._max_replies_per_round = max_replies_per_round
         self._round_replies = 0
-        self._inbox: deque[tuple[str, list[str]]] = deque()
+        self._inbox: deque[_UserMessage | PollSpec] = deque()
+        self._max_moderator_polls = max_moderator_polls
+        self._moderator_polls = 0
         self._wake = asyncio.Event()  # set when something may let a waiting engine continue
 
     # ----------------------------------------------------------------- controls
@@ -167,8 +193,22 @@ class DiscussionEngine:
         text = text.strip()
         if not text:
             raise ValueError("the message is empty")
-        self._inbox.append((text, [self._agent_id(name) for name in to]))
+        self._inbox.append(_UserMessage(text, [self._agent_id(name) for name in to]))
         self._wake.set()
+
+    def open_poll(self, spec: PollSpec | None = None) -> None:
+        """Run a poll between turns, also while paused: every agent picks one option.
+        Without a spec it asks who made the strongest case."""
+        if self.state.status is SessionStatus.FINISHED:
+            raise RuntimeError("this session has finished")
+        self._inbox.append(spec or winner_poll_spec())
+        self._wake.set()
+
+    def _people_id(self) -> str:
+        """Who the user speaks as: the moderator when they moderate, otherwise the user."""
+        if isinstance(self.state.config.moderator, HumanModerator):
+            return MODERATOR_ID
+        return USER_ID
 
     def _agent_id(self, name_or_id: str) -> str:
         config = self.state.config
@@ -201,9 +241,16 @@ class DiscussionEngine:
                 self.state.current_round = index
                 await self._run_round(index, current)
                 if self._moderator and not self._stopped and index < len(rounds) - 1:
-                    await self._moderator_turn(
-                        self._moderator.summary_messages(self.state, index), index
+                    offer_poll = (
+                        self._moderator_polls < self._max_moderator_polls
+                        and rounds[index + 1].type is not RoundType.VOTE
                     )
+                    summary = await self._moderator_turn(
+                        self._moderator.summary_messages(self.state, index, offer_poll=offer_poll),
+                        index,
+                    )
+                    if summary is not None and offer_poll:
+                        await self._moderator_poll(summary[1].captured.get("poll", ""), index)
             reason = "stopped" if self._stopped else "completed"
         except _TooManyFailures:
             reason = "error"
@@ -236,8 +283,11 @@ class DiscussionEngine:
 
     async def _run_round(self, index: int, current: Round) -> None:
         self.events.emit(RoundStarted(round_index=index, round_id=current.id))
-        if current.type is RoundType.VOTE:
-            self._notice("Vote rounds are not available yet; skipping this round.", index)
+        if current.type is RoundType.VOTE and current.poll is not None:
+            await self._between_turns(index, current)
+            if self._stopped:
+                return
+            await self._run_poll(current.poll, index, current, opened_by=MODERATOR_ID)
         else:
             turns = {agent.id: 0 for agent in self.state.config.agents}
             total = len(turns) * current.turns_per_agent
@@ -251,9 +301,9 @@ class DiscussionEngine:
                 turns[agent.id] += 1
                 if message is not None:
                     await self._answer_mentions(message, index, current)
-            await self._between_turns(index, current)  # anything the user said during the last turn
-            if self._stopped:
-                return
+        await self._between_turns(index, current)  # anything the user did during the last turn
+        if self._stopped:
+            return
         self.events.emit(RoundEnded(round_index=index))
 
     async def _between_turns(self, index: int, current: Round) -> None:
@@ -261,8 +311,11 @@ class DiscussionEngine:
         await asyncio.sleep(0)  # let subscribers and controls run
         while not self._stopped:
             if self._inbox:
-                text, to = self._inbox.popleft()
-                await self._post_user_message(text, to, index, current)
+                item = self._inbox.popleft()
+                if isinstance(item, PollSpec):
+                    await self._run_poll(item, index, current, opened_by=self._people_id())
+                else:
+                    await self._post_user_message(item.text, item.to, index, current)
             elif self._running.is_set():
                 return
             else:
@@ -273,10 +326,8 @@ class DiscussionEngine:
         self, text: str, to: list[str], index: int, current: Round
     ) -> None:
         config = self.state.config
-        if isinstance(config.moderator, HumanModerator):
-            speaker_id, kind = MODERATOR_ID, SpeakerKind.MODERATOR
-        else:
-            speaker_id, kind = USER_ID, SpeakerKind.USER
+        speaker_id = self._people_id()
+        kind = SpeakerKind.MODERATOR if speaker_id == MODERATOR_ID else SpeakerKind.USER
         mentions = find_mentions(text, config.agents)
         mentions += [agent_id for agent_id in to if agent_id not in mentions]
         message = ChatMessage(
@@ -380,6 +431,96 @@ class DiscussionEngine:
         self.events.emit(ModeratorDecision(next_speaker_id=chosen.id, reason=reason))
         return chosen
 
+    # ------------------------------------------------------------------- polls
+
+    async def _run_poll(self, spec: PollSpec, index: int, current: Round, opened_by: str) -> Poll:
+        """Open a poll, let every agent vote at the same time, then close it."""
+        config = self.state.config
+        earlier = next(
+            (
+                p
+                for p in reversed(self.state.polls)
+                if p.status is PollStatus.CLOSED
+                and p.kind is spec.kind
+                and p.question.casefold() == spec.question.casefold()
+            ),
+            None,
+        )
+        poll = Poll.open(
+            spec,
+            config.agents,
+            opened_by=opened_by,
+            round_index=index,
+            previous_id=earlier.id if earlier else None,
+        )
+        self.state.polls.append(poll)
+        self.events.emit(PollOpened(poll=poll.model_copy(deep=True)))
+        ballots = [
+            asyncio.create_task(self._ballot(agent, poll, index, current))
+            for agent in config.agents
+        ]
+        try:
+            for finished in asyncio.as_completed(ballots):
+                agent, option_id = await finished
+                if option_id is None:
+                    self._notice(f"{agent.name} did not vote.", index)
+                    continue
+                poll.cast_vote(agent.id, option_id)
+                self.events.emit(VoteCast(poll_id=poll.id, voter_id=agent.id, option_id=option_id))
+        finally:
+            for ballot in ballots:
+                ballot.cancel()
+        poll.close()
+        self.events.emit(PollClosed(poll_id=poll.id, results=poll.results()))
+        return poll
+
+    async def _ballot(
+        self, agent: Persona, poll: Poll, index: int, current: Round
+    ) -> tuple[Persona, str | None]:
+        """One agent's vote: an option id, or None if it couldn't vote."""
+        allowed = poll.allowed_options(agent.id)
+        if len(allowed) == 1:  # e.g. two agents in a winner poll
+            return agent, allowed[0].id
+        model = self.state.config.model_for(agent)
+        provider = self._providers.get(model)
+        messages = vote_messages(self.state, agent, poll, allowed, index, current)
+        for _attempt in range(2):
+            request = ChatRequest(
+                model=model.model,
+                messages=messages,
+                temperature=model.temperature,
+                json_mode=True,
+            )
+            try:
+                vote = await complete_structured(provider, request, VoteChoice)
+            except (ProviderError, StructuredOutputError) as exc:
+                self.events.emit(
+                    ErrorEvent(message=f"{agent.name} could not vote: {exc}", agent_id=agent.id)
+                )
+                return agent, None
+            option = match_choice(vote.choice, allowed)
+            if option is not None:
+                return agent, option.id
+            messages = [
+                *messages,
+                Message("assistant", json.dumps({"choice": vote.choice})),
+                retry_message(allowed),
+            ]
+        return agent, None
+
+    async def _moderator_poll(self, text: str, index: int) -> None:
+        """A poll the AI moderator chose to open after a round summary."""
+        if not text.strip():
+            return
+        try:
+            spec = parse_poll_spec(text)
+        except ValueError as exc:
+            self.events.emit(ErrorEvent(message=f"The moderator's poll could not be read: {exc}"))
+            return
+        self._moderator_polls += 1
+        current = self.state.config.round_plan.rounds[index]
+        await self._run_poll(spec, index, current, opened_by=MODERATOR_ID)
+
     # ------------------------------------------------------------- agent turns
 
     async def _agent_turn(
@@ -451,7 +592,7 @@ class DiscussionEngine:
     ) -> _Spoken:
         """Stream an answer as TokenDelta events, hiding <think> blocks, private sections,
         a leading "Name:" and trailing blank lines."""
-        tags = TagFilter(capture=("notes", "plan", "alliance"))
+        tags = TagFilter(capture=("notes", "plan", "alliance", "poll"))
         stripper = NamePrefixStripper(name)
         spaces = TrailingSpaceHolder()
         parts: list[str] = []

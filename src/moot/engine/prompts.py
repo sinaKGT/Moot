@@ -137,16 +137,10 @@ def visible_messages(
     ]
 
 
-def turn_prompt(
-    state: SessionState,
-    agent: Persona,
-    round_index: int,
-    current: Round,
-    turn: int,
-    reminders: list[str] | None = None,
-    reply_to: ChatMessage | None = None,
-) -> str:
-    """The user message: memory of the discussion, briefing, and what to do now."""
+def discussion_lines(
+    state: SessionState, agent: Persona, round_index: int, current: Round
+) -> list[str]:
+    """What the agent remembers: earlier points, the recent messages and its briefing."""
     config = state.config
     hidden_round = round_index if current.blind else None
     visible = visible_messages(state, agent, round_index, current)
@@ -174,6 +168,21 @@ def turn_prompt(
     briefing = build_briefing(state, agent, hidden_round)
     if briefing:
         lines += ["", briefing]
+    return lines
+
+
+def turn_prompt(
+    state: SessionState,
+    agent: Persona,
+    round_index: int,
+    current: Round,
+    turn: int,
+    reminders: list[str] | None = None,
+    reply_to: ChatMessage | None = None,
+) -> str:
+    """The user message: memory of the discussion, briefing, and what to do now."""
+    config = state.config
+    lines = discussion_lines(state, agent, round_index, current)
     if reminders:
         lines += ["", "About your last answer:"]
         lines += [f"- {reminder}" for reminder in reminders]

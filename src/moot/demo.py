@@ -6,12 +6,14 @@ import asyncio
 import contextlib
 import sys
 import threading
+from collections.abc import Callable
 from typing import TextIO
 
 from moot.console import ConsoleRenderer
 from moot.core import (
     ModelRef,
     Persona,
+    PollSpec,
     Round,
     RoundPlan,
     RoundType,
@@ -31,7 +33,7 @@ DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionConfig:
     """Ava (for), Ben (against) and Cleo (undecided, open to alliances), over an opening,
-    a challenge and a closing round."""
+    a challenge and a closing round, then a vote on who made the strongest case."""
     return SessionConfig(
         topic=topic,
         background=background,
@@ -85,20 +87,66 @@ def demo_config(topic: str, model: ModelRef, background: str = "") -> SessionCon
                     mentions_allowed=True,
                 ),
                 Round(type=RoundType.CLOSING),
+                Round(type=RoundType.VOTE),
             ]
         ),
         default_model=model,
     )
 
 
+TERMINAL_HELP = (
+    "Commands: /poll (who made the strongest case?), /poll Question | option | option, "
+    "/pause, /resume."
+)
+DEFAULT_POLL_OPTIONS = ("Yes", "No", "Not sure")
+
+
+def terminal_command(engine: DiscussionEngine, text: str) -> str | None:
+    """Act on one typed line: a command, or a message to the discussion.
+    Returns something to show the user, if anything."""
+    text = text.strip()
+    if not text:
+        return None
+    if not text.startswith("/"):
+        engine.say(text)
+        return None
+    command, _, rest = text.partition(" ")
+    match command.lower():
+        case "/poll":
+            question, *options = (part.strip() for part in rest.split("|"))
+            if not question and not options:
+                engine.open_poll()
+            else:
+                engine.open_poll(
+                    PollSpec(question=question, options=options or list(DEFAULT_POLL_OPTIONS))
+                )
+            return "The poll will start after the current turn."
+        case "/pause":
+            engine.pause()
+        case "/resume":
+            engine.resume()
+        case _:
+            return f"Unknown command {command}. {TERMINAL_HELP}"
+    return None
+
+
 def listen_to_terminal(
-    engine: DiscussionEngine, loop: asyncio.AbstractEventLoop, lines: TextIO | None = None
+    engine: DiscussionEngine,
+    loop: asyncio.AbstractEventLoop,
+    lines: TextIO | None = None,
+    show: Callable[[str], None] | None = None,
 ) -> threading.Thread:
-    """Post each line typed in the terminal to the discussion, from a background thread."""
+    """Act on each line typed in the terminal, from a background thread."""
 
     def post(text: str) -> None:
-        with contextlib.suppress(RuntimeError, ValueError):  # finished, or an empty line
-            engine.say(text)
+        try:
+            reply = terminal_command(engine, text)
+        except RuntimeError:  # the discussion has finished
+            return
+        except ValueError as exc:  # e.g. a poll with fewer than two options
+            reply = f"That didn't work: {exc}"
+        if reply and show is not None:
+            show(reply)
 
     def read() -> None:
         for line in lines or sys.stdin:
@@ -130,9 +178,9 @@ async def run_in_console(
         names = " or ".join(f"@{agent.name}" for agent in state.config.agents[:2])
         renderer.hint(
             f"Type a message and press Enter at any time to join in; write {names} "
-            "to ask one of them directly."
+            f"to ask one of them directly. {TERMINAL_HELP}"
         )
-        listen_to_terminal(engine, asyncio.get_running_loop())
+        listen_to_terminal(engine, asyncio.get_running_loop(), show=renderer.hint)
     follower = asyncio.create_task(renderer.follow(engine.events.subscribe()))
     try:
         await engine.run()

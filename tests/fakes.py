@@ -60,10 +60,16 @@ def moderator_reply(request: ChatRequest) -> list[str] | None:
     return None
 
 
+def is_vote_request(request: ChatRequest) -> bool:
+    return any("has opened a poll" in m.content for m in request.messages if m.role == "user")
+
+
 def default_script(request: ChatRequest) -> list[str]:
     reply = moderator_reply(request)
     if reply is not None:
         return reply
+    if is_vote_request(request):
+        return ['{"choice": "A"}']
     if is_graph_request(request):
         point = {"ref": "N1", "type": "claim", "text": f"{graph_speaker(request)} main point"}
         return [json.dumps({"nodes": [point], "links": []})]

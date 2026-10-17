@@ -31,6 +31,7 @@ from moot.memory.notes import (
     split_trailing_notes,
 )
 from moot.memory.summary import ArgumentMap, argument_map
+from moot.memory.votes import poll_line, poll_lines, previous_poll
 
 __all__ = [
     "GRAPH_BUILDER_INTRO",
@@ -59,6 +60,9 @@ __all__ = [
     "pair_alignment",
     "parse_notes",
     "pending_items",
+    "poll_line",
+    "poll_lines",
+    "previous_poll",
     "relations",
     "split_trailing_notes",
     "topic_sides",

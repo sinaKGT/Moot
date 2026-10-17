@@ -21,8 +21,15 @@ from moot.core import (
     SessionState,
     SpeakerKind,
 )
-from moot.memory import alliance_lines, argument_map, attention_lines
+from moot.memory import alliance_lines, argument_map, attention_lines, poll_lines
 from moot.providers import ChatRequest, Message, Provider, complete_structured, extract_json_object
+
+POLL_OFFER = (
+    "Only if the participants are clearly split and a quick poll would show where everyone "
+    "stands, you may also add one hidden line after your summary: "
+    '<poll>{"question": "...", "options": ["...", "..."]}</poll>, or '
+    '<poll>{"winner": true}</poll> to ask who made the strongest case. Usually, leave it out.'
+)
 
 OPENING_TASK = "Open the discussion."
 SUMMARY_TASK = "has just ended."
@@ -120,7 +127,9 @@ class ModeratorBrain:
 
     # ---------------------------------------------------------------- summaries
 
-    def summary_messages(self, state: SessionState, round_index: int) -> list[Message]:
+    def summary_messages(
+        self, state: SessionState, round_index: int, *, offer_poll: bool = False
+    ) -> list[Message]:
         config = state.config
         rounds = config.round_plan.rounds
         current = rounds[round_index]
@@ -139,12 +148,14 @@ class ModeratorBrain:
             if alliances
             else ""
         )
+        polls = poll_lines(state)
+        poll_part = "\n\nPoll results so far:\n" + "\n".join(polls) if polls else ""
         user = (
             f"Round {round_index + 1}: {current.name} {SUMMARY_TASK} What was said in it:\n\n"
-            f"{_transcript(config, said) or '(nothing)'}{alliance_part}\n\n"
+            f"{_transcript(config, said) or '(nothing)'}{alliance_part}{poll_part}\n\n"
             "In at most 80 words, summarise the main points and where the participants clash, "
             "and name anything someone was asked but did not answer. Stay neutral."
-            f"{next_round}"
+            f"{next_round}" + (f"\n\n{POLL_OFFER}" if offer_poll else "")
         )
         return [Message("system", self.system_prompt(config)), Message("user", user)]
 
@@ -222,6 +233,9 @@ class ModeratorBrain:
         alliances = alliance_lines(state)
         if alliances:
             material.append("Alliances:\n" + "\n".join(alliances))
+        polls = poll_lines(state, limit=None)
+        if polls:
+            material.append("Polls (each agent picked one option):\n" + "\n".join(polls))
         recent = state.messages[-RECENT_FOR_MODERATOR:]
         material.append(f"Last messages:\n{_transcript(config, recent)}")
         user = (
@@ -234,6 +248,7 @@ class ModeratorBrain:
             "Final positions: each participant's final answer and whether it changed\n"
             "Open questions\n"
             + ("Alliances: who teamed up, and whether the alliances held\n" if alliances else "")
+            + ("Vote: what the polls showed\n" if polls else "")
             + "Stay neutral and base everything on what was said.\n\n"
             + "\n\n".join(material)
         )

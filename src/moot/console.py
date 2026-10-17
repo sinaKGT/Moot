@@ -11,6 +11,8 @@ from moot.core import (
     USER_ID,
     HumanModerator,
     Persona,
+    Poll,
+    PollResult,
     SessionConfig,
     SessionState,
     SpeakerKind,
@@ -22,6 +24,8 @@ from moot.core.events import (
     Event,
     ModeratorDecision,
     NotebookUpdated,
+    PollClosed,
+    PollOpened,
     RoundStarted,
     RuleViolation,
     SessionEnded,
@@ -31,6 +35,7 @@ from moot.core.events import (
     TokenDelta,
     TurnCompleted,
     TurnStarted,
+    VoteCast,
 )
 from moot.memory import (
     alliance_mismatches,
@@ -47,6 +52,8 @@ RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 DIM = "\x1b[2m"
 RED = "\x1b[31m"
+BAR_WIDTH = 20
+MAX_OPTION_WIDTH = 32
 
 END_TEXT = {
     "completed": "Discussion finished.",
@@ -78,6 +85,7 @@ class ConsoleRenderer:
             enable_windows_ansi()
         self._agents = {agent.id: agent for agent in config.agents}
         self._speakers: dict[str, str] = {}  # message id -> speaker id, to show who a reply answers
+        self._polls: dict[str, Poll] = {}
 
     async def follow(self, events: AsyncIterator[Event]) -> None:
         async for event in events:
@@ -131,6 +139,18 @@ class ConsoleRenderer:
                 self._write(f"{self._style(DIM, f'  ! Rule reminder for {name}: {rule}')}\n")
             case AllianceChanged() as change:
                 self._write(f"\n· {self._describe_alliance(change)}\n")
+            case PollOpened(poll=poll):
+                self._polls[poll.id] = poll
+                asker = self._name(poll.opened_by)
+                options = ", ".join(option.label for option in poll.options)
+                self._write(
+                    f"\n{self._style(BOLD, f'── Poll: {poll.question} ──')}\n"
+                    f"{self._style(DIM, f'Opened by {asker}. Options: {options}')}\n"
+                )
+            case VoteCast(voter_id=voter_id):
+                self._write(f"{self._style(DIM, f'  ✓ {self._name(voter_id)} voted')}\n")
+            case PollClosed(poll_id=poll_id, results=results):
+                self._poll_results(poll_id, results)
             case EngineNotice(message=text):
                 self._write(f"\n{self._style(DIM, '· ' + text)}\n")
             case SessionPaused():
@@ -141,6 +161,38 @@ class ConsoleRenderer:
                 self._write(f"\n{self._style(BOLD, END_TEXT[reason])}\n")
             case _:
                 pass
+
+    def _poll_results(self, poll_id: str, results: list[PollResult]) -> None:
+        """Draw the results like a real poll: a bar per option, with counts, percentages
+        and who chose it."""
+        poll = self._polls.get(poll_id)
+        earlier = None
+        if poll is not None and poll.previous_id and self.state is not None:
+            earlier = next((p for p in self.state.polls if p.id == poll.previous_id), None)
+        before = {r.label: r.votes for r in earlier.results()} if earlier else {}
+        colors = {
+            o.id: self._agents[o.agent_id].color
+            for o in (poll.options if poll else [])
+            if o.agent_id in self._agents
+        }
+        width = min(max((len(r.label) for r in results), default=0), MAX_OPTION_WIDTH)
+        top = max((r.votes for r in results), default=0)
+        self._write(f"{self._style(BOLD, 'Results')}\n")
+        for result in results:
+            label = result.label[:width].ljust(width)
+            filled = round(BAR_WIDTH * result.percent / 100)
+            bar = "█" * filled
+            color = colors.get(result.option_id)
+            bar = self._style(self._rgb(color), bar) if color else bar
+            votes = f"{result.votes} vote{'s' if result.votes != 1 else ' '}"
+            was = f" (was {before[result.label]})" if result.label in before else ""
+            voters = ", ".join(self._name(v) for v in result.voters)
+            chosen_by = f"  ← {voters}" if voters else ""
+            line = (
+                f"  {label}  {bar}{'░' * (BAR_WIDTH - filled)}  {votes}"
+                f"{result.percent:5.0f}%{was}{chosen_by}"
+            )
+            self._write((self._style(BOLD, line) if result.votes == top and top else line) + "\n")
 
     def hint(self, text: str) -> None:
         self._write(f"{self._style(DIM, text)}\n")
