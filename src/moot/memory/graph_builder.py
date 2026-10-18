@@ -21,7 +21,7 @@ from moot.core import (
     NodeType,
     SessionState,
 )
-from moot.providers import ChatRequest, Message, Provider, complete_structured
+from moot.providers import ChatRequest, Message, Provider, complete_structured, trimmable
 
 GRAPH_BUILDER_INTRO = "You map the arguments in a moderated discussion."
 
@@ -155,6 +155,8 @@ class GraphBuilder:
             refs[ref] = node.id
             speaker = self._speaker(state, node.speaker_id) if node.speaker_id else "—"
             lines.append(f"{ref} [{node.type.value}] {speaker}: {node.text}")
+        if len(lines) > len(topic_nodes):  # a small context window drops the oldest points
+            lines[len(topic_nodes) :] = [trimmable(lines[len(topic_nodes) :])]
 
         speaker = self._speaker(state, message.speaker_id)
         round_label = (

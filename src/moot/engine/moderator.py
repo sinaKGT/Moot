@@ -22,7 +22,14 @@ from moot.core import (
     SpeakerKind,
 )
 from moot.memory import alliance_lines, argument_map, attention_lines, poll_lines
-from moot.providers import ChatRequest, Message, Provider, complete_structured, extract_json_object
+from moot.providers import (
+    ChatRequest,
+    Message,
+    Provider,
+    complete_structured,
+    extract_json_object,
+    trimmable,
+)
 
 POLL_OFFER = (
     "Only if the participants are clearly split and a quick poll would show where everyone "
@@ -64,11 +71,16 @@ def _name(config: SessionConfig, message: ChatMessage) -> str:
     return "User" if message.speaker_kind is SpeakerKind.USER else "System"
 
 
-def _transcript(config: SessionConfig, messages: Sequence[ChatMessage]) -> str:
-    return "\n\n".join(
-        f"{_name(config, m)}: {m.text}"
-        for m in messages
-        if m.speaker_kind is not SpeakerKind.SYSTEM
+def _transcript(config: SessionConfig, messages: Sequence[ChatMessage], *, keep: int = 0) -> str:
+    """The messages, one paragraph each; a small context window drops the oldest first."""
+    return trimmable(
+        (
+            f"{_name(config, m)}: {m.text}"
+            for m in messages
+            if m.speaker_kind is not SpeakerKind.SYSTEM
+        ),
+        joiner="\n\n",
+        keep=keep,
     )
 
 
@@ -164,7 +176,7 @@ class ModeratorBrain:
         poll_part = "\n\nPoll results so far:\n" + "\n".join(polls) if polls else ""
         user = (
             f"Round {round_index + 1}: {current.name} {SUMMARY_TASK} What was said in it:\n\n"
-            f"{_transcript(config, said) or '(nothing)'}{alliance_part}{poll_part}\n\n"
+            f"{_transcript(config, said, keep=1) or '(nothing)'}{alliance_part}{poll_part}\n\n"
             "In at most 80 words, summarise the main points and where the participants clash, "
             "and name anything someone was asked but did not answer. Stay neutral."
             f"{next_round}" + (f"\n\n{POLL_OFFER}" if offer_poll else "")
@@ -201,7 +213,7 @@ class ModeratorBrain:
             f"Round {round_index + 1}: {current.name}. Instruction: {current.instruction}\n\n"
             f"Who still has turns in this round:\n{waiting}\n\n"
             f"Open challenges and questions:\n{chr(10).join(open_items) or 'None.'}\n\n"
-            f"Recent messages:\n{_transcript(config, recent) or 'None yet.'}\n\n"
+            f"Recent messages:\n{_transcript(config, recent, keep=2) or 'None yet.'}\n\n"
             f"{SELECTION_TASK} so the discussion is fair and flows naturally: prefer someone who "
             "was just challenged or asked a question, and don't let one person dominate. "
             'Reply with only a JSON object: {"next": "Name", "reason": "a short reason"}'
@@ -229,7 +241,10 @@ class ModeratorBrain:
         config = state.config
         material = []
         for title, items in argument_map(state).sections():
-            material.append(f"{title}:\n" + "\n".join(f"- {item}" for item in items))
+            listed = [f"- {item}" for item in items]
+            if title not in ("Final positions", "Positions"):  # long lists may shrink
+                listed = [trimmable(listed, drop="last", priority=1, keep=2)]
+            material.append(f"{title}:\n" + "\n".join(listed))
         history = []
         for agent in config.agents:
             notebook = state.notebooks.get(agent.id)

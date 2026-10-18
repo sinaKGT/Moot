@@ -28,6 +28,7 @@ class ProviderPreset:
     include_usage: bool = False
     json_mode: bool = False
     headers: Mapping[str, str] = field(default_factory=dict)
+    context_api: str | None = None
 
 
 PRESETS: dict[str, ProviderPreset] = {
@@ -78,7 +79,14 @@ PRESETS: dict[str, ProviderPreset] = {
         ProviderPreset(
             "ollama", "Ollama", "http://localhost:11434/v1", None, local=True, json_mode=True
         ),
-        ProviderPreset("lmstudio", "LM Studio", "http://localhost:1234/v1", None, local=True),
+        ProviderPreset(
+            "lmstudio",
+            "LM Studio",
+            "http://localhost:1234/v1",
+            None,
+            local=True,
+            context_api="lmstudio",
+        ),
         ProviderPreset(
             "custom", "Custom (OpenAI-compatible)", None, "MOOT_CUSTOM_API_KEY", local=True
         ),
@@ -115,6 +123,7 @@ def create_provider(
         local=preset.local,
         include_usage=preset.include_usage,
         json_mode=preset.json_mode,
+        context_api=preset.context_api,
         read_timeout=LOCAL_READ_TIMEOUT if preset.local else CLOUD_READ_TIMEOUT,
     )
     return OpenAICompatibleProvider(config, client=client)

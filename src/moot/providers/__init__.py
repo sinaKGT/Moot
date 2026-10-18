@@ -3,6 +3,7 @@
 from moot.providers.base import (
     ChatRequest,
     ChatResult,
+    ContextWindow,
     Embedder,
     Message,
     ModelInfo,
@@ -18,6 +19,14 @@ from moot.providers.base import (
     TextDelta,
     Usage,
 )
+from moot.providers.budget import (
+    BudgetBook,
+    BudgetedProvider,
+    budgeted,
+    render,
+    small_context_notice,
+    trimmable,
+)
 from moot.providers.openai_compat import OpenAICompatibleProvider, ProviderConfig
 from moot.providers.registry import PRESETS, ProviderPreset, create_provider
 from moot.providers.structured import (
@@ -28,8 +37,11 @@ from moot.providers.structured import (
 
 __all__ = [
     "PRESETS",
+    "BudgetBook",
+    "BudgetedProvider",
     "ChatRequest",
     "ChatResult",
+    "ContextWindow",
     "Embedder",
     "Message",
     "ModelInfo",
@@ -48,7 +60,11 @@ __all__ = [
     "StructuredOutputError",
     "TextDelta",
     "Usage",
+    "budgeted",
     "complete_structured",
     "create_provider",
     "extract_json_object",
+    "render",
+    "small_context_notice",
+    "trimmable",
 ]

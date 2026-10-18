@@ -86,6 +86,7 @@ from moot.providers import (
     TextDelta,
     Usage,
     complete_structured,
+    small_context_notice,
 )
 from moot.tools import ToolBox, ToolResult
 
@@ -306,6 +307,7 @@ class DiscussionEngine:
         graph_worker = asyncio.create_task(self._graph_worker()) if self._build_graph else None
         reason: str | None = None
         try:
+            await self._context_notices()
             if self._moderator:
                 await self._moderator_opening()
             rounds = self.state.config.round_plan.rounds
@@ -367,6 +369,27 @@ class DiscussionEngine:
         moderator_model = config.moderator_model()
         if self._moderator and moderator_model is not None:
             self._providers.get(moderator_model)
+
+    async def _context_notices(self) -> None:
+        """Tell the user once about each model that runs with a small context window (Moot
+        then shortens its prompts to fit)."""
+        config = self.state.config
+        refs = [config.model_for(agent) for agent in config.agents]
+        if self._moderator:
+            refs.append(config.moderator_model())
+        if self._build_graph:
+            refs.append(config.graph_model())
+        seen: set[tuple[str, str]] = set()
+        for ref in refs:
+            if ref is None or (ref.provider, ref.model) in seen:
+                continue
+            seen.add((ref.provider, ref.model))
+            provider = self._providers.get(ref)
+            window_of = getattr(provider, "context_window", None)
+            window = await window_of(ref.model) if window_of else None
+            notice = small_context_notice(provider.name, ref.model, window) if window else None
+            if notice:
+                self.events.emit(EngineNotice(message=notice))
 
     # ------------------------------------------------------------------ rounds
 

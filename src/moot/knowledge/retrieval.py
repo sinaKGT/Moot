@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 
 from moot.knowledge.extraction import entity_key
 from moot.knowledge.store import ChunkRow, FactRow, KnowledgeStore, keyword_terms
+from moot.providers import trimmable
 
 RRF_K = 60
 PASSAGES = 3
@@ -63,12 +64,15 @@ class KnowledgeBrief:
         if self.empty:
             return ""
         lines = ["Your own knowledge (from your files; only you can see this):"]
+        # ranked best first, so a small context window drops the last ones first
         if self.facts:
             lines.append("Facts:")
-            lines += [f"- {hit.statement} [{hit.source}]" for hit in self.facts]
+            facts = [f"- {hit.statement} [{hit.source}]" for hit in self.facts]
+            lines.append(trimmable(facts, drop="last", priority=1, keep=2))
         if self.passages:
             lines.append("Passages:")
-            lines += [f'- [{hit.source}] "{hit.text}"' for hit in self.passages]
+            passages = [f'- [{hit.source}] "{hit.text}"' for hit in self.passages]
+            lines.append(trimmable(passages, drop="last", priority=1))
         example = self.sources[0]
         lines.append(
             "Use it where it helps your point, and name the source in brackets when you do, "

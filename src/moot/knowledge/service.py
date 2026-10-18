@@ -24,6 +24,7 @@ from moot.providers import (
     Provider,
     ProviderError,
     StructuredOutputError,
+    budgeted,
     create_provider,
 )
 
@@ -112,7 +113,7 @@ class KnowledgeService:
 
         def provider(ref: ModelRef) -> Provider:
             if ref.provider not in providers:
-                providers[ref.provider] = self._factory(ref.provider)
+                providers[ref.provider] = budgeted(self._factory(ref.provider))
             return providers[ref.provider]
 
         try:

@@ -20,7 +20,7 @@ from moot.core import (
 )
 from moot.engine.alliances import ALLIANCE_INSTRUCTIONS
 from moot.memory import build_briefing, earlier_points, notes_instructions
-from moot.providers import Message
+from moot.providers import Message, trimmable
 
 RECENT_MESSAGES = 6
 MAX_EARLIER_POINTS = 12
@@ -163,24 +163,26 @@ def discussion_lines(
     visible = visible_messages(state, agent, round_index, current)
     older, recent = visible[:-RECENT_MESSAGES], visible[-RECENT_MESSAGES:]
 
+    # A small context window drops the earliest points first, then the oldest messages.
     lines: list[str] = []
     if older:
         points = earlier_points(state, {m.id for m in older}, agent, hidden_round)
+        lines.append("Earlier in the discussion:")
         if points:
-            lines.append("Earlier in the discussion:")
-            lines += [f"- {point}" for point in points[-MAX_EARLIER_POINTS:]]
+            earlier = [f"- {point}" for point in points[-MAX_EARLIER_POINTS:]]
         else:  # the argument graph hasn't caught up yet: fall back to shortened messages
-            lines.append("Earlier in the discussion:")
-            lines += [
+            earlier = [
                 f"- {speaker_name(config, m)}: {m.text[:200]}" for m in older[-MAX_EARLIER_POINTS:]
             ]
+        lines.append(trimmable(earlier))
         lines += ["", "Recent messages:"]
     elif recent:
         lines.append("Discussion so far:")
     else:
         lines.append("Nobody has spoken yet.")
-    for message in recent:
-        lines += ["", f"{speaker_name(config, message)}: {message.text}"]
+    if recent:
+        said = [f"{speaker_name(config, message)}: {message.text}" for message in recent]
+        lines += ["", trimmable(said, joiner="\n\n", priority=1, keep=2)]
 
     briefing = build_briefing(state, agent, hidden_round)
     if briefing:

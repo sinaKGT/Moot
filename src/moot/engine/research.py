@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, field_validator
 
+from moot.providers import trimmable
 from moot.tools import ToolResult, ToolSpec
 
 MAX_TOOL_STEPS = 2
@@ -68,10 +69,11 @@ def tool_prompt(specs: list[ToolSpec], found: list[ToolResult], steps_left: int)
     ]
     if found:
         lines += ["", "What you found so far:"]
-        lines += [
+        results = [
             f"{i}. {result.summary}\n{_clip(result.text, STEP_RESULT_CHARS)}"
             for i, result in enumerate(found, 1)
         ]
+        lines.append(trimmable(results, drop="last", priority=2, keep=1))
     lines += [
         "",
         'Reply with only a JSON object: {"tool": "<name>", "arguments": {...}} to use a tool '
@@ -99,11 +101,13 @@ def findings_block(found: list[ToolResult]) -> str:
         "What you found with your tools (everyone saw that you used them; if you rely on a "
         "result, say where it comes from, e.g. the site's name or link):"
     ]
+    pieces: list[str] = []
     used = 0
     for i, result in enumerate(useful, 1):
         piece = f"{i}. {result.summary}\n{_clip(result.text, FINDING_CHARS)}"
         if used + len(piece) > FINDINGS_CHARS:
             break
-        lines.append(piece)
+        pieces.append(piece)
         used += len(piece)
+    lines.append(trimmable(pieces, drop="last", priority=2, keep=1))
     return "\n".join(lines)

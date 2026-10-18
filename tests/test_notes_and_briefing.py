@@ -28,6 +28,7 @@ from moot.engine import DiscussionEngine, ProviderPool
 from moot.engine.prompts import RECENT_MESSAGES, turn_prompt
 from moot.engine.text import TagFilter
 from moot.memory import apply_notes, argument_map, build_briefing, parse_notes, split_trailing_notes
+from moot.providers import render
 
 MODEL = ModelRef(provider="fake", model="m")
 
@@ -205,7 +206,7 @@ def test_long_discussions_use_a_recent_window_plus_earlier_points():
                 )
             )
 
-    prompt = turn_prompt(state, ava, 0, state.config.round_plan.rounds[0], 2)
+    prompt = render(turn_prompt(state, ava, 0, state.config.round_plan.rounds[0], 2))
 
     assert "Earlier in the discussion:\n- Ava: First big claim" in prompt
     assert "Recent messages:" in prompt

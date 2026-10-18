@@ -75,6 +75,15 @@ class ModelInfo:
     context_length: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class ContextWindow:
+    """How many tokens a model can read and write at once, as its server reports it."""
+
+    tokens: int
+    loaded: bool = True  # False: not loaded yet; `tokens` is what it will most likely get
+    max_tokens: int | None = None  # the most the model itself supports, when known
+
+
 class ProviderError(Exception):
     """Base class for every provider failure."""
 

@@ -80,6 +80,14 @@ on an agent's card. Before it speaks it may look things up, and everyone sees wh
 up. Add MCP servers under "Tools": a command Moot starts (e.g. `npx -y
 @modelcontextprotocol/server-filesystem D:\Documents`) or a URL.
 
+**Local models (LM Studio, Ollama):** Moot fits every prompt to the model's context window.
+LM Studio tells Moot the context each loaded model got; with other servers Moot learns it when
+a request is refused as too long, and tries again shorter. When the context is small, the
+oldest parts of the discussion are left out first and requests take turns. LM Studio loads
+models with only 4,096 tokens by default, which Moot points out at the start: for better
+discussions, load the model with a context length of 16,384 or more (in LM Studio's load
+settings, or `lms load <model> --context-length 16384`).
+
 **Saved discussions and export:** discussions are saved as they run and survive a restart.
 The team builder lists them: open one, take its setup to run it again, or delete it. Export a
 discussion as a readable report (Markdown) or as everything (JSON).

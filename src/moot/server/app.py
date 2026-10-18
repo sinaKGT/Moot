@@ -51,7 +51,7 @@ from moot.engine.designer import (
 from moot.knowledge import BaseInfo, DocumentInfo, KnowledgeError, UnreadableFile
 from moot.knowledge.parsers import MAX_FILE_BYTES
 from moot.memory import AllianceMonitor, alliance_monitor, argument_map
-from moot.providers import PRESETS, ProviderError
+from moot.providers import PRESETS, ProviderError, budgeted
 from moot.server.security import LOCAL_HOSTS, LocalOnly
 from moot.server.sessions import SessionManager, SessionNotFound, SessionRecord
 from moot.server.sse import event_source
@@ -403,7 +403,7 @@ def create_app(
     async def design_team(body: DesignRequest, manager: Manager) -> TeamProposal:
         """The Team Designer: a panel, a format and (for decisions) options from a goal."""
         with engine_errors():
-            provider = manager.provider(body.provider)
+            provider = budgeted(manager.provider(body.provider))
         try:
             return await TeamDesigner().design(
                 body.goal,

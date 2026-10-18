@@ -18,6 +18,7 @@ import httpx
 from moot.providers.base import (
     ChatRequest,
     ChatResult,
+    ContextWindow,
     ModelInfo,
     ModelNotFoundError,
     ProviderAuthError,
@@ -30,6 +31,7 @@ from moot.providers.base import (
     TextDelta,
     Usage,
 )
+from moot.providers.budget import PROBE_TIMEOUT, lmstudio_window
 
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_RETRY_AFTER_SECONDS = 30.0
@@ -46,6 +48,7 @@ class ProviderConfig:
     local: bool = False
     include_usage: bool = False
     json_mode: bool = False  # server accepts response_format={"type": "json_object"}
+    context_api: str | None = None  # how to ask the server for a model's context: "lmstudio"
     connect_timeout: float = 10.0
     read_timeout: float = 120.0
     max_retries: int = 2
@@ -141,6 +144,23 @@ class OpenAICompatibleProvider:
                 raise ProviderResponseError(self.name, "some texts came back without a vector")
             vectors += found
         return vectors
+
+    async def context_window(self, model: str) -> ContextWindow | None:
+        """How much context the server gives `model`, where it can tell (LM Studio's own
+        API reports it for loaded models); None otherwise."""
+        if self.config.context_api != "lmstudio":
+            return None
+        root = self._base_url.removesuffix("/v1")
+        try:
+            response = await self._client.get(
+                f"{root}/api/v1/models", headers=self._headers(), timeout=PROBE_TIMEOUT
+            )
+            if response.status_code != 200:
+                return None
+            data = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        return lmstudio_window(data, model)
 
     async def list_models(self) -> list[ModelInfo]:
         async with self._send("GET", "/models") as response:
