@@ -53,6 +53,9 @@ class TurnStarted(EventBase):
     speaker_id: str
     round_index: int | None = None
     reply_to: str | None = Field(default=None, description="the message this turn answers")
+    purpose: Literal["opening", "summary", "conclusion"] | None = Field(
+        default=None, description="for the AI moderator's turns"
+    )
 
 
 class TokenDelta(EventBase):

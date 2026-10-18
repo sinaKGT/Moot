@@ -135,7 +135,10 @@ class SessionState(MootModel):
     notebooks: dict[str, Notebook] = Field(default_factory=dict)
     alliances: list[Alliance] = Field(default_factory=list)
     polls: list[Poll] = Field(default_factory=list)
-    report: str | None = Field(default=None, description="the AI moderator's final report")
+    report: str | None = Field(default=None, description="the AI moderator's conclusion")
+    audience_question: str | None = Field(
+        default=None, description="the open question the conclusion ends with"
+    )
 
     @model_validator(mode="after")
     def _check(self) -> SessionState:

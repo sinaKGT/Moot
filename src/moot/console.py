@@ -102,8 +102,12 @@ class ConsoleRenderer:
                 self._write(
                     f"\n{self._style(BOLD, title)}\n{self._style(DIM, current.instruction)}\n"
                 )
-            case TurnStarted(message_id=message_id, speaker_id=speaker_id, reply_to=reply_to):
+            case TurnStarted(
+                message_id=message_id, speaker_id=speaker_id, reply_to=reply_to, purpose=purpose
+            ):
                 self._speakers[message_id] = speaker_id
+                if purpose == "conclusion":
+                    self._write(f"\n{self._style(BOLD, '── Conclusion ──')}\n")
                 label = self._speaker(speaker_id)
                 if reply_to in self._speakers:
                     label += f" → {self._name(self._speakers[reply_to])}"

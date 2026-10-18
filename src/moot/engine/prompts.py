@@ -191,8 +191,12 @@ def turn_prompt(
     turn: int,
     reminders: list[str] | None = None,
     reply_to: ChatMessage | None = None,
+    own_turn: bool = False,
 ) -> str:
-    """The user message: memory of the discussion, briefing, and what to do now."""
+    """The user message: memory of the discussion, briefing, and what to do now.
+
+    A reply answers a message that @mentioned the agent. If it is also the agent's own turn
+    in the round, it answers first and then makes its own point."""
     config = state.config
     lines = discussion_lines(state, agent, round_index, current)
     if reminders:
@@ -207,10 +211,18 @@ def turn_prompt(
         )
     if reply_to is not None:
         asker = speaker_name(config, reply_to)
-        lines.append(
-            f'Instruction: {asker} asked you directly: "{reply_to.text}" '
-            f"Answer {asker} first, directly and briefly."
-        )
+        if own_turn:
+            lines.append(
+                f'Instruction: {asker} asked you directly: "{reply_to.text}" '
+                f"Answer {asker} first, then make your own point for this round: "
+                f"{current.instruction} This is your only turn in this round."
+            )
+        else:
+            lines.append(
+                f'Instruction: {asker} asked you directly: "{reply_to.text}" '
+                f"Answer {asker} directly and briefly. Don't repeat what you have already "
+                "said; answer only this question."
+            )
     else:
         if current.turns_per_agent > 1:
             lines.append(
@@ -240,8 +252,12 @@ def build_agent_messages(
     turn: int,
     reminders: list[str] | None = None,
     reply_to: ChatMessage | None = None,
+    own_turn: bool = False,
 ) -> list[Message]:
     return [
         Message("system", persona_prompt(state.config, agent)),
-        Message("user", turn_prompt(state, agent, round_index, current, turn, reminders, reply_to)),
+        Message(
+            "user",
+            turn_prompt(state, agent, round_index, current, turn, reminders, reply_to, own_turn),
+        ),
     ]

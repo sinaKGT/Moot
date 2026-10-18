@@ -57,7 +57,7 @@ def moderator_reply(request: ChatRequest) -> list[str] | None:
     if SUMMARY_TASK in user:
         return ["Summary of the round."]
     if REPORT_TASK in user:
-        return ["Answer: undecided."]
+        return ["It stayed undecided.\n\nQuestion for the audience: What would change your mind?"]
     return None
 
 

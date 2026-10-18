@@ -267,7 +267,7 @@ def test_finish_with_the_ai_moderator_still_gets_a_report():
     engine, _ = make_engine(state)
     end_after_first_turn(engine, state, "finish")
     assert spoken(state) == ["Ava"]
-    assert state.report == "Answer: undecided."
+    assert state.audience_question == "What would change your mind?"
     assert engine.events.history[-1].reason == "completed"
 
 

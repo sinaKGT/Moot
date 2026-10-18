@@ -98,7 +98,8 @@ def test_a_mentioned_agent_answers_straight_away():
 
     run(engine.run())
 
-    assert spoken(state) == [("Ava", None), ("Cleo", "Ava"), ("Ben", None), ("Cleo", None)]
+    # Cleo's answer is also her turn in the round, so she doesn't speak again
+    assert spoken(state) == [("Ava", None), ("Cleo", "Ava"), ("Ben", None)]
     question, reply = state.messages[0], state.messages[1]
     assert question.mentions == [state.config.agents[2].id]
     assert reply.reply_to == question.id
@@ -106,7 +107,31 @@ def test_a_mentioned_agent_answers_straight_away():
     assert started[1].reply_to == question.id
     reply_prompt = provider.requests[1].messages[-1].content
     assert 'Ava asked you directly: "@Cleo why would shops survive?"' in reply_prompt
-    assert "Answer Ava first" in reply_prompt
+    assert "Answer Ava first, then make your own point for this round" in reply_prompt
+    assert "This is your only turn in this round." in reply_prompt
+
+
+def test_an_agent_that_already_spoke_answers_briefly():
+    state = make_state()
+    script = scripted({"Cleo": "@Ava what about deliveries?"})
+    engine, provider = make_engine(state, script)
+    run(engine.run())
+
+    assert spoken(state) == [("Ava", None), ("Ben", None), ("Cleo", None), ("Ava", "Cleo")]
+    reply_prompt = provider.requests[-1].messages[-1].content
+    assert "Answer Cleo directly and briefly. Don't repeat what you have already said" in (
+        reply_prompt
+    )
+    assert "only turn" not in reply_prompt
+
+
+def test_answers_in_a_vote_round_are_never_a_turn():
+    state = make_state(rounds=[Round(type=RoundType.VOTE)], names=("Ava", "Ben"))
+    engine, provider = make_engine(state)
+    engine.say("@Ava before we vote: why?")
+    run(engine.run())
+    prompt = next(r for r in provider.requests if is_reply(r)).messages[-1].content
+    assert "Answer User directly and briefly" in prompt
 
 
 def test_normal_turns_in_mention_rounds_explain_the_at_sign():
@@ -144,24 +169,28 @@ def test_reply_chain_stops_after_one_answer_back():
     run(engine.run())
     assert spoken(state) == [
         ("Ava", None),
-        ("Ben", "Ava"),
+        ("Ben", "Ava"),  # also Ben's turn
         ("Ava", "Ben"),  # one answer back, then the chain stops
-        ("Ben", None),
-        ("Ava", "Ben"),
-        ("Ben", "Ava"),
     ]
 
 
 def test_replies_per_round_are_capped():
     state = make_state(names=("Ava", "Ben"))
-    engine, _ = make_engine(state, ping_pong)  # default cap: the round's 2 normal turns
+    engine, _ = make_engine(state, ping_pong, max_replies_per_round=1)
     run(engine.run())
-    assert spoken(state) == [("Ava", None), ("Ben", "Ava"), ("Ava", "Ben"), ("Ben", None)]
+    assert spoken(state) == [("Ava", None), ("Ben", "Ava")]
+
+
+def test_the_default_cap_is_the_rounds_normal_turns():
+    state = make_state(names=("Ava", "Ben"))
+    engine, _ = make_engine(state, ping_pong, max_reply_chain=5)  # only the cap can stop it
+    run(engine.run())
+    assert spoken(state) == [("Ava", None), ("Ben", "Ava"), ("Ava", "Ben")]
 
 
 def test_the_cap_resets_each_round():
     state = make_state(rounds=[qa(), qa()], names=("Ava", "Ben"))
-    engine, _ = make_engine(state, ping_pong, max_reply_chain=1)
+    engine, _ = make_engine(state, ping_pong, max_reply_chain=5)
     run(engine.run())
     replies = [m.round_index for m in state.messages if m.reply_to]
     assert replies == [0, 0, 1, 1]
@@ -174,7 +203,7 @@ def test_the_user_can_ask_any_agent_even_in_a_blind_round():
 
     run(engine.run())
 
-    assert spoken(state) == [("User", None), ("Ben", "User"), ("Ava", None), ("Ben", None)]
+    assert spoken(state) == [("User", None), ("Ben", "User"), ("Ava", None)]
     question = state.messages[0]
     assert question.speaker_kind is SpeakerKind.USER
     assert question.mentions == [state.config.agents[1].id]
@@ -199,7 +228,7 @@ def test_say_can_address_agents_by_name_or_id():
     engine.say("What would change your mind?", to=["Ava", ben.id])
     run(engine.run())
     assert state.messages[0].mentions == [ava.id, ben.id]
-    assert spoken(state)[:3] == [("User", None), ("Ava", "User"), ("Ben", "User")]
+    assert spoken(state) == [("User", None), ("Ava", "User"), ("Ben", "User")]
 
 
 def test_say_rejects_bad_input_and_finished_sessions():
@@ -238,7 +267,7 @@ def test_the_user_can_talk_to_an_agent_while_paused():
 
     run(scenario())
     assert status_during_reply == [SessionStatus.PAUSED]
-    assert spoken(state) == [("Ava", None), ("User", None), ("Ben", "User"), ("Ben", None)]
+    assert spoken(state) == [("Ava", None), ("User", None), ("Ben", "User")]
     assert state.status is SessionStatus.FINISHED
 
 
@@ -310,7 +339,7 @@ def test_replies_are_not_held_to_the_answer_first_rule():
 def test_console_shows_who_a_reply_answers():
     state = make_state(names=("Ava", "Ben"))
     engine, _ = make_engine(state, scripted({"Ava": "@Ben really?"}))
-    engine.say("@Ava hello")
+    engine.say("@Ben hello")
     out = io.StringIO()
     renderer = ConsoleRenderer(state.config, out=out, color=False, state=state)
 
@@ -321,8 +350,8 @@ def test_console_shows_who_a_reply_answers():
 
     run(scenario())
     text = out.getvalue()
-    assert "\nYou: @Ava hello" in text
-    assert "\nAva → You: Ava answers" in text
+    assert "\nYou: @Ben hello" in text
+    assert "\nBen → You: Ben answers" in text
     assert "\nAva: @Ben really?" in text
     assert "\nBen → Ava: Ben answers" in text
 

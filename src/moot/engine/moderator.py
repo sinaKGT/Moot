@@ -34,7 +34,8 @@ POLL_OFFER = (
 OPENING_TASK = "Open the discussion."
 SUMMARY_TASK = "has just ended."
 SELECTION_TASK = "Choose who should speak next"
-REPORT_TASK = "Write the final report"
+REPORT_TASK = "Close the discussion with a short conclusion"
+AUDIENCE_PREFIX = "Question for the audience:"
 TOPIC_TASK = "Is this topic clear enough to discuss?"
 
 MAX_SUBQUESTIONS = 4
@@ -239,20 +240,27 @@ class ModeratorBrain:
         recent = state.messages[-RECENT_FOR_MODERATOR:]
         material.append(f"Last messages:\n{_transcript(config, recent)}")
         user = (
-            f"The discussion has ended. {REPORT_TASK} in at most 250 words, using these headings "
-            "on their own lines:\n"
-            "Answer: the overall answer or recommendation the discussion points to, or say that "
-            "it stayed undecided\n"
-            "Where they agree\n"
-            "Where they disagree\n"
-            "Final positions: each participant's final answer and whether it changed\n"
-            "Open questions\n"
-            + ("Alliances: who teamed up, and whether the alliances held\n" if alliances else "")
-            + ("Vote: what the polls showed\n" if polls else "")
-            + "Stay neutral and base everything on what was said.\n\n"
-            + "\n\n".join(material)
+            f"The discussion has ended. {REPORT_TASK}, speaking to the audience, in at most "
+            "200 words. Cover:\n"
+            "- the overall answer the discussion points to, or that it stayed undecided\n"
+            "- where the participants agree, and where they still disagree\n"
+            "- each participant's final position, and whether it changed\n"
+            + ("- who teamed up, and whether the alliances held\n" if alliances else "")
+            + ("- what the vote showed\n" if polls else "")
+            + "Write it as a short closing statement in plain sentences, not a list. Stay "
+            "neutral and base everything on what was said.\n"
+            "End with one open, thought-provoking question for the audience, on its own last "
+            f'line, starting exactly with "{AUDIENCE_PREFIX}"\n\n' + "\n\n".join(material)
         )
         return [Message("system", self.system_prompt(config)), Message("user", user)]
+
+
+def audience_question(text: str) -> str | None:
+    """The question for the audience a conclusion ends with, if it has one."""
+    found = re.findall(rf"{re.escape(AUDIENCE_PREFIX)}\s*(.+)", text, flags=re.IGNORECASE)
+    if not found:
+        return None
+    return found[-1].strip().strip("*_").strip() or None
 
 
 async def check_topic(

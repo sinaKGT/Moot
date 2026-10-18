@@ -6,6 +6,7 @@ import asyncio
 import io
 import json
 
+import pytest
 from fakes import FakeProvider, default_script, moderator_reply, run_moderated, speaker_of
 
 from moot.core import (
@@ -28,10 +29,22 @@ from moot.core import (
     SpeakerKind,
     SpeakingOrder,
 )
-from moot.core.events import ErrorEvent, ModeratorDecision, RuleViolation, TurnCompleted
+from moot.core.events import (
+    ErrorEvent,
+    ModeratorDecision,
+    RuleViolation,
+    TurnCompleted,
+    TurnStarted,
+)
 from moot.demo import demo_config, run_in_console
 from moot.engine import DiscussionEngine, ProviderPool
-from moot.engine.moderator import SELECTION_TASK, ModeratorBrain, check_topic
+from moot.engine.moderator import (
+    REPORT_TASK,
+    SELECTION_TASK,
+    ModeratorBrain,
+    audience_question,
+    check_topic,
+)
 from moot.engine.rule_checks import check_rules, is_yes_no_topic, word_count
 from moot.providers import ProviderConnectionError
 
@@ -86,9 +99,19 @@ def test_moderator_opens_summarises_between_rounds_and_reports():
 
     texts = moderator_texts(state)
     assert texts.count("Summary of the round.") == 1  # between the two rounds, not after the last
-    assert texts[-1] == "Answer: undecided."
-    assert state.report == "Answer: undecided."
+    conclusion = "It stayed undecided.\n\nQuestion for the audience: What would change your mind?"
+    assert texts[-1] == conclusion
+    assert state.report == conclusion
+    assert state.audience_question == "What would change your mind?"
     assert engine.events.history[-1].reason == "completed"
+    purposes = [e.purpose for e in engine.events.history if isinstance(e, TurnStarted)]
+    assert [p for p in purposes if p] == ["opening", "summary", "conclusion"]
+
+    report_prompt = next(
+        r.messages[-1].content for r in provider.requests if REPORT_TASK in r.messages[-1].content
+    )
+    assert "speaking to the audience" in report_prompt
+    assert 'starting exactly with "Question for the audience:"' in report_prompt
 
     # agents hear the moderator
     ava_prompts = [r for r in provider.requests if speaker_of(r) == "Ava"]
@@ -306,4 +329,19 @@ def test_console_shows_moderator_lines_and_choices():
     assert "Moderator: Welcome." in text
     assert "Moderator: Summary of the round." in text
     assert "· Moderator gives the floor to" in text
-    assert "Moderator: Answer: undecided." in text
+    assert "── Conclusion ──\n\nModerator: It stayed undecided." in text
+    assert "Question for the audience: What would change your mind?" in text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Undecided.\n\nQuestion for the audience: Would you ban cars?", "Would you ban cars?"),
+        ("Done.\n**Question for the audience:** Who pays?", "Who pays?"),
+        ("question for the audience:   What now?  ", "What now?"),
+        ("A conclusion with no question.", None),
+        ("Question for the audience:", None),
+    ],
+)
+def test_the_audience_question_is_read_from_the_conclusion(text, expected):
+    assert audience_question(text) == expected

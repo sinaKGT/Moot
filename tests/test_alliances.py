@@ -31,6 +31,7 @@ from moot.core import (
 from moot.core.events import AllianceChanged, TokenDelta
 from moot.engine import DiscussionEngine, ProviderPool
 from moot.engine.alliances import apply_alliance_action, parse_alliance_action
+from moot.engine.moderator import REPORT_TASK
 from moot.memory import (
     alliance_lines,
     alliance_mismatches,
@@ -468,8 +469,8 @@ def test_the_moderator_hears_about_alliances():
     ]
     summary = next(p for p in moderator_prompts if "has just ended." in p)
     assert "Alliances:\n- Ava and Cleo are allied (since round 1): Ban cars" in summary
-    report = next(p for p in moderator_prompts if "Write the final report" in p)
-    assert "Alliances: who teamed up" in report
+    report = next(p for p in moderator_prompts if REPORT_TASK in p)
+    assert "- who teamed up, and whether the alliances held" in report
 
 
 def test_console_reports_alliance_changes_and_a_summary():

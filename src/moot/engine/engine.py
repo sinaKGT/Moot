@@ -56,7 +56,7 @@ from moot.core.events import (
 )
 from moot.engine.alliances import apply_alliance_action, parse_alliance_action
 from moot.engine.mentions import find_mentions
-from moot.engine.moderator import ModeratorBrain
+from moot.engine.moderator import ModeratorBrain, audience_question
 from moot.engine.pool import ProviderPool
 from moot.engine.prompts import build_agent_messages
 from moot.engine.rule_checks import check_rules
@@ -178,6 +178,7 @@ class DiscussionEngine:
         self._advance: str | None = None  # "next" or "end", set by next_round() / end_round()
         self._finishing = False
         self.waiting_for: str | None = None  # what the engine is waiting for, if anything
+        self._turns: dict[str, int] = {}  # turns used in the running round (empty between rounds)
 
     # ----------------------------------------------------------------- controls
 
@@ -313,6 +314,7 @@ class DiscussionEngine:
                     summary = await self._moderator_turn(
                         self._moderator.summary_messages(self.state, index, offer_poll=offer_poll),
                         index,
+                        "summary",
                     )
                     if summary is not None and offer_poll:
                         await self._moderator_poll(summary[1].captured.get("poll", ""), index)
@@ -353,6 +355,16 @@ class DiscussionEngine:
         self.events.emit(RoundStarted(round_index=index, round_id=current.id))
         self._round_replies = 0
         turns = {agent.id: 0 for agent in self.state.config.agents}
+        self._turns = turns
+        try:
+            await self._round_body(index, current, turns)
+        finally:
+            self._turns = {}
+        if self._stopped:
+            return
+        self.events.emit(RoundEnded(round_index=index))
+
+    async def _round_body(self, index: int, current: Round, turns: dict[str, int]) -> None:
         if current.type is RoundType.VOTE and current.poll is not None:
             await self._between_turns(index, current)
             if self._stopped:
@@ -364,9 +376,6 @@ class DiscussionEngine:
         else:
             await self._automatic_turns(index, current, turns)
         await self._between_turns(index, current)  # anything the user did during the last turn
-        if self._stopped:
-            return
-        self.events.emit(RoundEnded(round_index=index))
 
     def _round_cut_short(self) -> bool:
         return self._stopped or self._finishing or self._advance is not None
@@ -380,6 +389,8 @@ class DiscussionEngine:
                 return
             if self._floor:
                 agent = self._granted_speaker(index, current, turns)
+            elif all(count >= current.turns_per_agent for count in turns.values()):
+                return  # answers to the user used up the last turns
             else:
                 agent = await self._next_speaker(index, current, turns)
             await self._take_turn(agent, index, current, turns)
@@ -510,7 +521,11 @@ class DiscussionEngine:
     async def _answer_mentions(
         self, question: ChatMessage, index: int, current: Round, chain: int = 0
     ) -> None:
-        """Agents @mentioned in a message answer straight away, within the loop guard."""
+        """Agents @mentioned in a message answer straight away, within the loop guard.
+
+        If the agent hasn't had its turn in this round yet, the answer is its turn: it answers
+        first, then makes its own point, and doesn't speak again in a separate turn.
+        """
         from_agent = question.speaker_kind is SpeakerKind.AGENT
         if from_agent and (not current.mentions_allowed or current.blind):
             return
@@ -529,10 +544,23 @@ class DiscussionEngine:
                 if self._round_replies >= limit:
                     return  # the question is answered in a normal turn instead
                 self._round_replies += 1
+            used = self._turns.get(agent_id)
+            own_turn = (
+                used is not None
+                and used < current.turns_per_agent
+                and current.type is not RoundType.VOTE
+            )
             reply = await self._agent_turn(
-                config.agent(agent_id), index, current, 0, reply_to=question
+                config.agent(agent_id),
+                index,
+                current,
+                used or 0,
+                reply_to=question,
+                own_turn=own_turn,
             )
             if reply is not None:
+                if own_turn:
+                    self._turns[agent_id] += 1
                 await self._answer_mentions(reply, index, current, chain + 1)
 
     async def _next_speaker(self, index: int, current: Round, turns: dict[str, int]) -> Persona:
@@ -695,8 +723,10 @@ class DiscussionEngine:
         current: Round,
         turn: int,
         reply_to: ChatMessage | None = None,
+        own_turn: bool = False,
     ) -> ChatMessage | None:
-        """One agent speaks: a normal turn, or an answer to a message that @mentioned it."""
+        """One agent speaks: a normal turn, or an answer to a message that @mentioned it
+        (which can also be its own turn in the round)."""
         config = self.state.config
         message_id = new_id("msg")
         self.events.emit(
@@ -713,7 +743,7 @@ class DiscussionEngine:
         request = ChatRequest(
             model=model.model,
             messages=build_agent_messages(
-                self.state, agent, index, current, turn, reminders, reply_to
+                self.state, agent, index, current, turn, reminders, reply_to, own_turn
             ),
             temperature=model.temperature,
         )
@@ -841,7 +871,7 @@ class DiscussionEngine:
     # --------------------------------------------------------------- moderator
 
     async def _moderator_turn(
-        self, messages: list[Message], round_index: int | None
+        self, messages: list[Message], round_index: int | None, purpose: str | None = None
     ) -> tuple[ChatMessage, _Spoken] | None:
         """The AI moderator speaks. A failure is reported but never stops the discussion."""
         config = self.state.config
@@ -850,7 +880,12 @@ class DiscussionEngine:
             return None
         message_id = new_id("msg")
         self.events.emit(
-            TurnStarted(message_id=message_id, speaker_id=MODERATOR_ID, round_index=round_index)
+            TurnStarted(
+                message_id=message_id,
+                speaker_id=MODERATOR_ID,
+                round_index=round_index,
+                purpose=purpose,  # type: ignore[arg-type]
+            )
         )
         request = ChatRequest(model=model.model, messages=messages, temperature=model.temperature)
         try:
@@ -881,7 +916,9 @@ class DiscussionEngine:
 
     async def _moderator_opening(self) -> None:
         assert self._moderator is not None
-        result = await self._moderator_turn(self._moderator.opening_messages(self.state), None)
+        result = await self._moderator_turn(
+            self._moderator.opening_messages(self.state), None, "opening"
+        )
         if result is None:
             return
         message, spoken = result
@@ -901,10 +938,14 @@ class DiscussionEngine:
             self.events.emit(GraphUpdated(node_ids=node_ids))
 
     async def _final_report(self) -> None:
+        """The AI moderator's conclusion, ending with a question for the audience."""
         assert self._moderator is not None
-        result = await self._moderator_turn(self._moderator.report_messages(self.state), None)
+        result = await self._moderator_turn(
+            self._moderator.report_messages(self.state), None, "conclusion"
+        )
         if result is not None:
             self.state.report = result[0].text
+            self.state.audience_question = audience_question(result[0].text)
 
     def _moderator_says(self, text: str, index: int | None) -> None:
         """A short moderator line that needs no model, such as a rule reminder."""

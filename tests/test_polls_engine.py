@@ -40,7 +40,7 @@ from moot.core import (
 from moot.core.events import ErrorEvent, PollClosed, PollOpened, TurnCompleted, VoteCast
 from moot.demo import listen_to_terminal, terminal_command
 from moot.engine import DiscussionEngine, ProviderPool
-from moot.engine.moderator import POLL_OFFER
+from moot.engine.moderator import POLL_OFFER, REPORT_TASK
 from moot.engine.voting import match_choice, parse_poll_spec
 from moot.providers import ProviderConnectionError
 
@@ -341,8 +341,8 @@ def test_the_moderator_may_open_one_poll_after_a_summary():
     assert POLL_OFFER not in summaries[1]  # one moderator poll per session by default
     assert "Poll results so far:" in summaries[1]
     assert all("<poll>" not in m.text for m in state.messages)
-    report = moderator_prompts(provider, "Write the final report")[0]
-    assert "Vote: what the polls showed" in report
+    report = moderator_prompts(provider, REPORT_TASK)[0]
+    assert "- what the vote showed" in report
     assert '"Ban cars?" (round 1): Yes 3 votes' in report
 
 
