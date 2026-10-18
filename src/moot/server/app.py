@@ -48,6 +48,8 @@ from moot.engine.designer import (
     TeamDesigner,
     TeamProposal,
 )
+from moot.knowledge import BaseInfo, DocumentInfo, KnowledgeError, UnreadableFile
+from moot.knowledge.parsers import MAX_FILE_BYTES
 from moot.memory import AllianceMonitor, alliance_monitor, argument_map
 from moot.providers import PRESETS, ProviderError
 from moot.server.security import LOCAL_HOSTS, LocalOnly
@@ -214,6 +216,44 @@ class DesignRequest(BaseModel):
     )
 
 
+class KnowledgeCreate(BaseModel):
+    name: str = Field(default="Knowledge", max_length=80)
+    embedding: ModelRef | None = Field(
+        default=None, description="model for meaning search; None: search by words only"
+    )
+
+
+class FoundFact(BaseModel):
+    statement: str
+    source: str
+
+
+class FoundPassage(BaseModel):
+    text: str
+    source: str
+
+
+class KnowledgeSearchResult(BaseModel):
+    facts: list[FoundFact]
+    passages: list[FoundPassage]
+    briefing: str = Field(description="what an agent would be given")
+
+
+class KnowledgeGraphPreview(BaseModel):
+    entities: list[dict]
+    facts: list[dict]
+
+
+@contextlib.contextmanager
+def knowledge_errors() -> Iterator[None]:
+    try:
+        yield
+    except KnowledgeError as exc:
+        raise HTTPException(404, str(exc)) from None
+    except UnreadableFile as exc:
+        raise HTTPException(415, str(exc)) from None
+
+
 def manager_of(request: Request) -> SessionManager:
     return request.app.state.manager
 
@@ -350,6 +390,78 @@ def create_app(
             raise HTTPException(502, str(exc)) from None
         finally:
             await provider.aclose()
+
+    # -------------------------------------------------------------- knowledge
+
+    @app.get("/api/knowledge", tags=["knowledge"])
+    async def knowledge_bases(manager: Manager) -> list[BaseInfo]:
+        return manager.knowledge.store.bases()
+
+    @app.post("/api/knowledge", status_code=201, tags=["knowledge"])
+    async def create_knowledge(body: KnowledgeCreate, manager: Manager) -> BaseInfo:
+        """A new, empty knowledge base for an agent's files."""
+        return manager.knowledge.create_base(body.name, body.embedding)
+
+    @app.get("/api/knowledge/{base_id}", tags=["knowledge"])
+    async def knowledge_base(base_id: str, manager: Manager) -> BaseInfo:
+        """The knowledge base with its files and how far each is indexed."""
+        with knowledge_errors():
+            return manager.knowledge.store.base(base_id)
+
+    @app.delete("/api/knowledge/{base_id}", status_code=204, tags=["knowledge"])
+    async def delete_knowledge(base_id: str, manager: Manager) -> Response:
+        if not await manager.knowledge.delete_base(base_id):
+            raise HTTPException(404, f"No knowledge base {base_id}")
+        return Response(status_code=204)
+
+    @app.put("/api/knowledge/{base_id}/files", status_code=202, tags=["knowledge"])
+    async def add_knowledge_file(
+        base_id: str,
+        name: Annotated[str, Query(min_length=1, max_length=200, description="the file name")],
+        request: Request,
+        manager: Manager,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> DocumentInfo:
+        """Add a file (sent as the request body) and index it in the background. `provider`
+        and `model` map it into the knowledge graph; without them it is only searchable."""
+        size = int(request.headers.get("content-length") or 0)
+        if size > MAX_FILE_BYTES:
+            raise HTTPException(413, f"{name} is larger than {MAX_FILE_BYTES // 2**20} MB.")
+        data = await request.body()
+        if not data:
+            raise HTTPException(400, f"{name} is empty.")
+        ref = ModelRef(provider=provider, model=model) if provider and model else None
+        with knowledge_errors():
+            return manager.knowledge.add_document(base_id, name, data, ref)
+
+    @app.delete("/api/knowledge/{base_id}/files/{document_id}", status_code=204, tags=["knowledge"])
+    async def delete_knowledge_file(base_id: str, document_id: str, manager: Manager) -> Response:
+        """Remove a file and everything learned from it."""
+        with knowledge_errors():
+            await manager.knowledge.delete_document(base_id, document_id)
+        return Response(status_code=204)
+
+    @app.get("/api/knowledge/{base_id}/search", tags=["knowledge"])
+    async def search_knowledge(
+        base_id: str, q: Annotated[str, Query(min_length=1, max_length=2000)], manager: Manager
+    ) -> KnowledgeSearchResult:
+        """What an agent with this knowledge would be told about `q`."""
+        with knowledge_errors():
+            brief = await manager.knowledge.brief(base_id, q)
+        return KnowledgeSearchResult(
+            facts=[FoundFact(statement=f.statement, source=f.source) for f in brief.facts],
+            passages=[FoundPassage(text=p.text, source=p.source) for p in brief.passages],
+            briefing=brief.text(),
+        )
+
+    @app.get("/api/knowledge/{base_id}/graph", tags=["knowledge"])
+    async def knowledge_graph(base_id: str, manager: Manager) -> KnowledgeGraphPreview:
+        """The most connected entities and the facts that link them."""
+        with knowledge_errors():
+            manager.knowledge.store.base(base_id)
+            entities, facts = manager.knowledge.store.graph(base_id)
+        return KnowledgeGraphPreview(entities=entities, facts=facts)
 
     @app.get("/api/library", tags=["general"])
     async def library() -> Library:

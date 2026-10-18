@@ -197,6 +197,7 @@ def turn_prompt(
     reminders: list[str] | None = None,
     reply_to: ChatMessage | None = None,
     own_turn: bool = False,
+    knowledge: str | None = None,
 ) -> str:
     """The user message: memory of the discussion, briefing, and what to do now.
 
@@ -204,6 +205,8 @@ def turn_prompt(
     in the round, it answers first and then makes its own point."""
     config = state.config
     lines = discussion_lines(state, agent, round_index, current)
+    if knowledge:
+        lines += ["", knowledge]
     if reminders:
         lines += ["", "About your last answer:"]
         lines += [f"- {reminder}" for reminder in reminders]
@@ -258,11 +261,32 @@ def build_agent_messages(
     reminders: list[str] | None = None,
     reply_to: ChatMessage | None = None,
     own_turn: bool = False,
+    knowledge: str | None = None,
 ) -> list[Message]:
     return [
         Message("system", persona_prompt(state.config, agent)),
         Message(
             "user",
-            turn_prompt(state, agent, round_index, current, turn, reminders, reply_to, own_turn),
+            turn_prompt(
+                state, agent, round_index, current, turn, reminders, reply_to, own_turn, knowledge
+            ),
         ),
     ]
+
+
+def knowledge_query(
+    state: SessionState,
+    agent: Persona,
+    round_index: int,
+    current: Round,
+    reply_to: ChatMessage | None = None,
+) -> str:
+    """What to search the agent's files for: the topic, the round's task, the question put to
+    it, and the latest things it can see said."""
+    config = state.config
+    recent = [m for m in visible_messages(state, agent, round_index, current) if m.text][-3:]
+    parts = [config.topic, *config.options, current.instruction]
+    if reply_to is not None:
+        parts.append(reply_to.text)
+    parts += [m.text for m in recent if reply_to is None or m.id != reply_to.id]
+    return "\n".join(p for p in parts if p)

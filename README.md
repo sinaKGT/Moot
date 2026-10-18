@@ -66,6 +66,12 @@ polls appear over the table, and the moderator closes with a conclusion. Type to
 asks an agent (autocomplete included), `/` gives commands. When you moderate, Moot tells you
 whose move it is.
 
+Give an agent its own files: drop PDFs, Word, text or Markdown files on its card. Moot turns
+them into that agent's knowledge graph (the entities and facts in them, with an embedding model
+from LM Studio or another provider for meaning search) and, before the agent speaks, briefs it
+privately with what bears on the moment; it cites the file and page. "Try" on the card shows
+what it would be told.
+
 Discussions are saved on this computer as they run (in `%LOCALAPPDATA%\Moot\moot.db` on
 Windows; set `MOOT_DATA_DIR` in `.env` to keep them elsewhere). The team builder lists them:
 open one, take its setup to run it again, or delete it. Export a discussion from its screen as

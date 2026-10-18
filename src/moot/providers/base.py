@@ -106,6 +106,15 @@ class ProviderResponseError(ProviderError):
 
 
 @runtime_checkable
+class Embedder(Protocol):
+    """A provider that can also turn texts into vectors (for searching agents' files)."""
+
+    name: str
+
+    async def embed(self, model: str, texts: list[str]) -> list[list[float]]: ...
+
+
+@runtime_checkable
 class Provider(Protocol):
     """What the engine needs from any model provider."""
 

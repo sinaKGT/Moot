@@ -40,3 +40,6 @@ class ChatMessage(MootModel):
     usage: TokenUsage | None = None
     model: str | None = Field(default=None, description="provider/model that wrote it")
     seconds: float | None = Field(default=None, ge=0, description="how long the answer took")
+    sources: list[str] = Field(
+        default_factory=list, description="the agent's own files it was briefed from, this turn"
+    )

@@ -2,7 +2,11 @@
 
 import type {
   AllianceMonitor,
+  KnowledgeBase,
+  KnowledgeDocument,
+  KnowledgeSearch,
   Library,
+  ModelRef,
   ModelEntry,
   ProviderInfo,
   SessionSummary,
@@ -95,6 +99,25 @@ export const api = {
   createSession: (config: unknown) => post<SessionSummary>("/api/sessions", config),
   library: () => request<Library>("/api/library"),
   design: (body: DesignRequest) => post<TeamProposal>("/api/designer", body),
+  knowledge: {
+    create: (name: string, embedding: ModelRef | null) => post<KnowledgeBase>("/api/knowledge", { name, embedding }),
+    get: (id: string) => request<KnowledgeBase>(`/api/knowledge/${id}`),
+    remove: (id: string) => request<void>(`/api/knowledge/${id}`, { method: "DELETE" }),
+    upload: (id: string, file: File, model: ModelRef | null) => {
+      const query = new URLSearchParams({ name: file.name });
+      if (model) {
+        query.set("provider", model.provider);
+        query.set("model", model.model);
+      }
+      return request<KnowledgeDocument>(`/api/knowledge/${id}/files?${query}`, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": "application/octet-stream" },
+      });
+    },
+    removeFile: (id: string, documentId: string) => request<void>(`/api/knowledge/${id}/files/${documentId}`, { method: "DELETE" }),
+    search: (id: string, q: string) => request<KnowledgeSearch>(`/api/knowledge/${id}/search?${new URLSearchParams({ q })}`),
+  },
   alliances: (id: string, upToRound: number | null) =>
     request<AllianceMonitor>(`/api/sessions/${id}/alliances${upToRound === null ? "" : `?up_to_round=${upToRound}`}`),
   control: (id: string, control: Control) => post<SessionSummary>(`/api/sessions/${id}/${control}`),

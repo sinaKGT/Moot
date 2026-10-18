@@ -29,6 +29,38 @@ export interface Persona {
   traits: Traits;
   model: ModelRef | null;
   prompt_override: string | null;
+  knowledge?: string | null;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  filename: string;
+  bytes: number;
+  created_at: string;
+  status: "queued" | "indexing" | "ready" | "failed";
+  stage: string;
+  chunks_total: number;
+  chunks_mapped: number;
+  chunks_failed: number;
+  error: string | null;
+  notes: string[];
+}
+
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  created_at: string;
+  embedding: ModelRef | null;
+  documents: KnowledgeDocument[];
+  passages: number;
+  entities: number;
+  facts: number;
+}
+
+export interface KnowledgeSearch {
+  facts: { statement: string; source: string }[];
+  passages: { text: string; source: string }[];
+  briefing: string;
 }
 
 export type RoundType = "opening" | "challenge" | "qa" | "rebuttal" | "free" | "vote" | "closing";
@@ -98,6 +130,7 @@ export interface ChatMessage {
   usage: { prompt_tokens: number; completion_tokens: number } | null;
   model?: string | null;
   seconds?: number | null;
+  sources?: string[];
 }
 
 export interface SessionSummary {

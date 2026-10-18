@@ -37,6 +37,9 @@ class Persona(MootModel):
     traits: Traits = Field(default_factory=Traits)
     model: ModelRef | None = Field(default=None, description="None = use the session default")
     prompt_override: str | None = Field(default=None, description="advanced: full custom prompt")
+    knowledge: str | None = Field(
+        default=None, description="knowledge base id: the files this agent draws on"
+    )
 
     @field_validator("name")
     @classmethod

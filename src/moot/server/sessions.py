@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from moot.core import SessionConfig, SessionState, SessionStatus
 from moot.core.events import EngineNotice, SessionEnded
 from moot.engine import DiscussionEngine, EventStream, ProviderPool
+from moot.knowledge import KnowledgeService, KnowledgeStore
 from moot.providers import PRESETS, Provider, create_provider
 from moot.storage import SessionListing, SessionStore, listing_of
 
@@ -61,11 +62,17 @@ class SessionManager:
         *,
         engine_options: dict | None = None,
         store: SessionStore | None = None,
+        knowledge: KnowledgeService | KnowledgeStore | None = None,
     ) -> None:
         self._sessions: dict[str, SessionRecord] = {}
         self._provider_factory = provider_factory
         self._engine_options = engine_options or {}
         self._store = store
+        if knowledge is None:  # in memory until the server is given a place on disk
+            knowledge = KnowledgeStore(":memory:")
+        if isinstance(knowledge, KnowledgeStore):
+            knowledge = KnowledgeService(knowledge, provider_factory)
+        self._knowledge = knowledge
         if store is not None:
             self._end_interrupted()
 
@@ -73,12 +80,22 @@ class SessionManager:
     def store(self) -> SessionStore | None:
         return self._store
 
+    @property
+    def knowledge(self) -> KnowledgeService:
+        return self._knowledge
+
     # ----------------------------------------------------------------- sessions
 
     def create(self, config: SessionConfig) -> SessionRecord:
         """Set up a session without starting it. Raises ValueError for unknown providers."""
         if self._provider_factory is None:
             self._check_presets(config)
+        for agent in config.agents:
+            if agent.knowledge and not self._knowledge.store.exists(agent.knowledge):
+                raise ValueError(
+                    f"{agent.name}'s knowledge files no longer exist. Remove them from the agent "
+                    "or add files again."
+                )
         state = SessionState.new(config)
         if self._store is not None:
             self._store.save(state)
@@ -134,6 +151,7 @@ class SessionManager:
             await self._cancel(record)
         if self._store is not None:
             self._store.close()
+        await self._knowledge.shutdown()
 
     # ----------------------------------------------------------------- providers
 
@@ -149,7 +167,8 @@ class SessionManager:
         pool = ProviderPool(factory=self._provider_factory) if self._provider_factory else None
         if self._store is not None and not events.closed:
             events.listen(self._store.recorder(state))
-        engine = DiscussionEngine(state, providers=pool, events=events, **self._engine_options)
+        options = {"knowledge": self._knowledge, **self._engine_options}
+        engine = DiscussionEngine(state, providers=pool, events=events, **options)
         record = SessionRecord(state=state, engine=engine)
         self._sessions[state.id] = record
         return record

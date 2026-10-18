@@ -33,6 +33,7 @@ from moot.providers.base import (
 
 RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 MAX_RETRY_AFTER_SECONDS = 30.0
+EMBED_BATCH = 32  # texts per /embeddings request
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,6 +120,27 @@ class OpenAICompatibleProvider:
             finish_reason=end.finish_reason if end else None,
             usage=end.usage if end else None,
         )
+
+    async def embed(self, model: str, texts: list[str]) -> list[list[float]]:
+        """Vectors for the texts, in order (OpenAI-style /embeddings), sent in batches."""
+        vectors: list[list[float]] = []
+        for start in range(0, len(texts), EMBED_BATCH):
+            batch = texts[start : start + EMBED_BATCH]
+            payload = {"model": model, "input": batch}
+            async with self._send("POST", "/embeddings", json_body=payload) as response:
+                body = await response.aread()
+            try:
+                items = json.loads(body)["data"]
+                ordered = sorted(items, key=lambda item: item.get("index", 0))
+                found = [[float(x) for x in item["embedding"]] for item in ordered]
+            except (ValueError, KeyError, TypeError) as exc:
+                raise ProviderResponseError(
+                    self.name, "the embeddings had an unexpected format"
+                ) from exc
+            if len(found) != len(batch) or any(not v for v in found):
+                raise ProviderResponseError(self.name, "some texts came back without a vector")
+            vectors += found
+        return vectors
 
     async def list_models(self) -> list[ModelInfo]:
         async with self._send("GET", "/models") as response:

@@ -60,7 +60,7 @@ from moot.engine.alliances import apply_alliance_action, parse_alliance_action
 from moot.engine.mentions import find_mentions
 from moot.engine.moderator import ModeratorBrain, audience_question
 from moot.engine.pool import ProviderPool
-from moot.engine.prompts import build_agent_messages
+from moot.engine.prompts import build_agent_messages, knowledge_query
 from moot.engine.rule_checks import check_rules
 from moot.engine.stream import EventStream
 from moot.engine.text import NamePrefixStripper, TagFilter, TrailingSpaceHolder
@@ -71,6 +71,7 @@ from moot.engine.voting import (
     retry_message,
     vote_messages,
 )
+from moot.knowledge import KnowledgeBrief, KnowledgeService
 from moot.memory import GraphBuilder, apply_notes, parse_notes, pending_items, split_trailing_notes
 from moot.providers import (
     ChatRequest,
@@ -152,8 +153,10 @@ class DiscussionEngine:
         max_reply_chain: int = DEFAULT_MAX_REPLY_CHAIN,
         max_replies_per_round: int | None = None,
         max_moderator_polls: int = 1,
+        knowledge: KnowledgeService | None = None,
     ) -> None:
         self.state = state
+        self._knowledge = knowledge
         self.events = events or EventStream()
         self._providers = providers or ProviderPool()
         self._owns_providers = providers is None
@@ -756,10 +759,19 @@ class DiscussionEngine:
 
         model = config.model_for(agent)
         reminders = self._reminders.pop(agent.id, [])
+        brief = await self._knowledge_brief(agent, index, current, reply_to)
         request = ChatRequest(
             model=model.model,
             messages=build_agent_messages(
-                self.state, agent, index, current, turn, reminders, reply_to, own_turn
+                self.state,
+                agent,
+                index,
+                current,
+                turn,
+                reminders,
+                reply_to,
+                own_turn,
+                knowledge=brief.text() if brief else None,
             ),
             temperature=model.temperature,
         )
@@ -789,6 +801,7 @@ class DiscussionEngine:
             usage=_token_usage(spoken.usage),
             model=f"{model.provider}/{model.model}",
             seconds=spoken.seconds,
+            sources=brief.sources if brief else [],
         )
         self.state.messages.append(message)
         self._last_speaker = agent.id
@@ -799,6 +812,26 @@ class DiscussionEngine:
         if self._build_graph:
             self._graph_queue.put_nowait(message)  # mapped in the background
         return message
+
+    async def _knowledge_brief(
+        self, agent: Persona, index: int, current: Round, reply_to: ChatMessage | None
+    ) -> KnowledgeBrief | None:
+        """What the agent's own files say about the moment (None without knowledge). A failed
+        search is reported and the agent speaks without it."""
+        if self._knowledge is None or not agent.knowledge:
+            return None
+        query = knowledge_query(self.state, agent, index, current, reply_to)
+        try:
+            brief = await self._knowledge.brief(agent.knowledge, query, self._providers.get)
+        except Exception as exc:  # noqa: BLE001 - knowledge never stops a turn
+            self.events.emit(
+                ErrorEvent(
+                    message=f"{agent.name}'s knowledge couldn't be searched: {exc}",
+                    agent_id=agent.id,
+                )
+            )
+            return None
+        return None if brief.empty else brief
 
     async def _speak(
         self, message_id: str, name: str, request: ChatRequest, provider: Provider

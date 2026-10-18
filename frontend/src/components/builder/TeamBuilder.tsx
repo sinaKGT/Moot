@@ -21,7 +21,7 @@ import {
 import type { Library, Persona, ProviderInfo, SessionSummary, TeamProposal } from "../../types";
 import { seatPositions } from "../Arena";
 import { AgentCard } from "./AgentCard";
-import { ModelPicker } from "./ModelPicker";
+import { EmbeddingPicker, ModelPicker } from "./ModelPicker";
 import { RoundPlanEditor } from "./RoundPlanEditor";
 import { TeamDesigner } from "./TeamDesigner";
 
@@ -229,6 +229,15 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
                 </h2>
                 <ModelPicker id="default-model" providers={providers} value={draft.defaultModel} onChange={(model) => dispatch({ type: "set", patch: { defaultModel: model } })} />
                 <p className="hint tight">Used by every agent without its own model, the moderator and the argument map.</p>
+                <h3 className="label sub">Meaning search in agents' files</h3>
+                <EmbeddingPicker
+                  providers={providers}
+                  value={draft.embeddingModel}
+                  auto={draft.embeddingAuto}
+                  onChange={(model, byHand) =>
+                    dispatch({ type: "set", patch: { embeddingModel: model, embeddingAuto: draft.embeddingAuto && !byHand } })
+                  }
+                />
               </section>
               <ModeratorPanel draft={draft} dispatch={dispatch} />
               <RulesPanel draft={draft} dispatch={dispatch} presets={library.rule_presets} />
@@ -244,6 +253,7 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
             takenColors={draft.agents.filter((a) => a.key !== selected.key).map((a) => a.color)}
             providers={providers}
             defaultModel={draft.defaultModel}
+            embeddingModel={draft.embeddingModel}
             canRemove={draft.agents.length > 1}
             onChange={(patch) => dispatch({ type: "updateAgent", key: selected.key, patch })}
             onRemove={() => dispatch({ type: "removeAgent", key: selected.key })}

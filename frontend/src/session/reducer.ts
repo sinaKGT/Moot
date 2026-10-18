@@ -32,6 +32,7 @@ export interface MessageEntry {
   tokens: { in: number; out: number } | null;
   seconds: number | null;
   model: string | null;
+  sources: string[];
 }
 
 export interface NoticeEntry {
@@ -198,6 +199,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         tokens: null,
         seconds: null,
         model: null,
+        sources: [],
       };
       return {
         ...next,
@@ -231,6 +233,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
             tokens: null,
             seconds: null,
             model: null,
+            sources: [],
           };
       let entry: MessageEntry = {
         ...base,
@@ -241,6 +244,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         tokens: m.usage ? { in: m.usage.prompt_tokens, out: m.usage.completion_tokens } : null,
         seconds: m.seconds ?? null,
         model: m.model ?? null,
+        sources: m.sources ?? [],
       };
       const asks = m.mentions.length > 0 && SEATED.includes(m.speaker_kind);
       if (asks && m.speaker_kind === "agent") entry = withTag(entry, "question");

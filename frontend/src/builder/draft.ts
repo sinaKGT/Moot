@@ -39,6 +39,10 @@ export interface Draft {
   selected: string | null;
   moderator: DraftModerator;
   defaultModel: ModelRef | null;
+  /** The model for meaning search in agents' files (null: search by words only). */
+  embeddingModel: ModelRef | null;
+  /** Still choosing the embedding model automatically (until it is chosen by hand). */
+  embeddingAuto: boolean;
   rules: SessionRules;
   rounds: DraftRound[];
   allowAlliances: boolean;
@@ -77,6 +81,7 @@ export function fromPersona(persona: Partial<Persona>, agents: DraftAgent[], kee
     traits: { ...DEFAULT_TRAITS, ...persona.traits },
     model: persona.model ?? null,
     prompt_override: persona.prompt_override ?? null,
+    knowledge: persona.knowledge ?? null,
   };
 }
 
@@ -124,6 +129,8 @@ export function initialDraft(library: Library): Draft {
     selected: agents[0]?.key ?? null,
     moderator: { kind: "ai" },
     defaultModel: null,
+    embeddingModel: null,
+    embeddingAuto: true,
     rules: { ...library.example.rules },
     rounds: fromRounds(library.example.round_plan.rounds),
     allowAlliances: true,
@@ -148,6 +155,8 @@ export function draftFromConfig(config: SessionConfig): Draft {
         ? { kind: "human", display_name: config.moderator.display_name, role: config.moderator.role }
         : { kind: "ai" },
     defaultModel: config.default_model,
+    embeddingModel: null,
+    embeddingAuto: true,
     rules: { ...config.rules, presets: [...config.rules.presets], custom: [...config.rules.custom] },
     rounds: fromRounds(config.round_plan.rounds),
     allowAlliances: config.allow_alliances,
@@ -174,7 +183,12 @@ export function applyProposal(draft: Draft, proposal: TeamProposal, library: Lib
 }
 
 export type DraftAction =
-  | { type: "set"; patch: Partial<Pick<Draft, "topic" | "background" | "moderator" | "defaultModel" | "allowAlliances" | "decision">> }
+  | {
+      type: "set";
+      patch: Partial<
+        Pick<Draft, "topic" | "background" | "moderator" | "defaultModel" | "embeddingModel" | "embeddingAuto" | "allowAlliances" | "decision">
+      >;
+    }
   | { type: "addAgent"; persona: Partial<Persona> }
   | { type: "updateAgent"; key: string; patch: Partial<Omit<DraftAgent, "key">> }
   | { type: "removeAgent"; key: string }
@@ -305,6 +319,7 @@ export function toConfig(draft: Draft) {
       traits: a.traits,
       model: a.model,
       prompt_override: a.prompt_override?.trim() || null,
+      knowledge: a.knowledge ?? null,
     })),
     moderator:
       draft.moderator.kind === "human"
@@ -337,7 +352,14 @@ export function loadDraft(): Draft | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     const draft = raw ? (JSON.parse(raw) as Draft) : null;
-    return draft && draft.version === DRAFT_VERSION && Array.isArray(draft.agents) ? draft : null;
+    if (!draft || draft.version !== DRAFT_VERSION || !Array.isArray(draft.agents)) return null;
+    // drafts saved before knowledge existed
+    return {
+      ...draft,
+      embeddingModel: draft.embeddingModel ?? null,
+      embeddingAuto: draft.embeddingAuto ?? true,
+      agents: draft.agents.map((a) => ({ ...a, knowledge: a.knowledge ?? null })),
+    };
   } catch {
     return null;
   }

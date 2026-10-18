@@ -96,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
+    from moot.knowledge import KNOWLEDGE_DB, KnowledgeError, KnowledgeStore
     from moot.server import LOCAL_HOSTS, SessionManager, create_app
     from moot.storage import DB_NAME, SessionStore, StoreError, default_data_dir
 
@@ -103,11 +104,13 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     data_dir = args.data_dir or default_data_dir()
     try:
         store = SessionStore(data_dir / DB_NAME)
-    except (StoreError, OSError) as exc:
-        print(f"Moot can't open its saved discussions: {exc}", file=sys.stderr)
+        knowledge = KnowledgeStore(data_dir / KNOWLEDGE_DB)
+    except (StoreError, KnowledgeError, OSError) as exc:
+        print(f"Moot can't open its saved data: {exc}", file=sys.stderr)
         return 1
     local = args.host in LOCAL_HOSTS
-    app = create_app(SessionManager(store=store), allowed_hosts=LOCAL_HOSTS if local else None)
+    manager = SessionManager(store=store, knowledge=knowledge)
+    app = create_app(manager, allowed_hosts=LOCAL_HOSTS if local else None)
     shown_host = f"[{args.host}]" if ":" in args.host else args.host
     url = f"http://{shown_host}:{args.port}"
     print(f"Moot is running at {url}  (API docs: {url}/docs)")

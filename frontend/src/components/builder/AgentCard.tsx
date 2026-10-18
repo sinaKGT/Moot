@@ -3,6 +3,7 @@
 import { Avatar } from "../../avatar";
 import { AGENT_COLORS, type DraftAgent } from "../../builder/draft";
 import type { ModelRef, ProviderInfo, Traits } from "../../types";
+import { KnowledgePanel } from "./KnowledgePanel";
 import { ModelPicker } from "./ModelPicker";
 
 const COLOR_NAMES: Record<string, string> = {
@@ -26,12 +27,13 @@ interface Props {
   takenColors: string[];
   providers: ProviderInfo[];
   defaultModel: ModelRef | null;
+  embeddingModel: ModelRef | null;
   onChange: (patch: Partial<Omit<DraftAgent, "key">>) => void;
   onRemove: () => void;
   canRemove: boolean;
 }
 
-export function AgentCard({ agent, takenColors, providers, defaultModel, onChange, onRemove, canRemove }: Props) {
+export function AgentCard({ agent, takenColors, providers, defaultModel, embeddingModel, onChange, onRemove, canRemove }: Props) {
   const id = `agent-${agent.key}`;
   const text = (field: "role" | "viewpoint" | "motivation" | "expertise" | "thinking_style", label: string, hint: string, rows = 0) => (
     <div className="field">
@@ -108,6 +110,14 @@ export function AgentCard({ agent, takenColors, providers, defaultModel, onChang
       ) : (
         <p className="hint">Uses the discussion's model{defaultModel ? `: ${defaultModel.model}` : ""}.</p>
       )}
+
+      <KnowledgePanel
+        agentName={agent.name}
+        knowledge={agent.knowledge ?? null}
+        embedding={embeddingModel}
+        model={agent.model ?? defaultModel}
+        onAttach={(knowledge) => onChange({ knowledge })}
+      />
 
       <details className="advanced">
         <summary>Advanced: write its whole prompt</summary>

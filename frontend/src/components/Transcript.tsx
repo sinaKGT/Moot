@@ -114,6 +114,11 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
           {withMentions(entry.text, agents)}
           {streaming && <span className="caret" style={{ color }} />}
         </p>
+        {entry.sources.length > 0 && (
+          <div className="sources" title="Passages from this agent's own files it was given for this turn">
+            From its files: {entry.sources.join(" · ")}
+          </div>
+        )}
         {entry.tokens && (
           <div className="tokens" title={entry.model ?? undefined}>
             {entry.tokens.in} in · {entry.tokens.out} out tokens

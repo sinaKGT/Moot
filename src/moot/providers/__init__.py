@@ -3,6 +3,7 @@
 from moot.providers.base import (
     ChatRequest,
     ChatResult,
+    Embedder,
     Message,
     ModelInfo,
     ModelNotFoundError,
@@ -29,6 +30,7 @@ __all__ = [
     "PRESETS",
     "ChatRequest",
     "ChatResult",
+    "Embedder",
     "Message",
     "ModelInfo",
     "ModelNotFoundError",

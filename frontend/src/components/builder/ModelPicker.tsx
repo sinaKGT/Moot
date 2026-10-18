@@ -115,3 +115,90 @@ export function ModelPicker({ id, providers, value, onChange }: Props) {
     </div>
   );
 }
+
+/** Embedding models first (their ids usually say "embed"). */
+export const looksLikeEmbedding = (id: string) => /embed|bge|e5-|gte-|minilm/i.test(id);
+
+const LOCAL_FIRST = ["lmstudio", "ollama"];
+
+function embeddingProvider(providers: ProviderInfo[]): ProviderInfo | undefined {
+  for (const id of LOCAL_FIRST) {
+    const found = providers.find((p) => p.id === id);
+    if (found) return found;
+  }
+  return usableProvider(providers);
+}
+
+interface EmbeddingProps {
+  providers: ProviderInfo[];
+  value: ModelRef | null;
+  auto: boolean;
+  onChange: (model: ModelRef | null, byHand: boolean) => void;
+}
+
+/** The model for meaning search in agents' files: a local embedding model if one is there,
+ * else none (search by words only). Chosen automatically until chosen by hand. */
+export function EmbeddingPicker({ providers, value, auto, onChange }: EmbeddingProps) {
+  const [provider, setProvider] = useState(value?.provider ?? "");
+  const [models, setModels] = useState<ModelEntry[]>([]);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    if (!provider && providers.length) setProvider(embeddingProvider(providers)?.id ?? "");
+  }, [providers, provider]);
+
+  useEffect(() => {
+    if (!provider) return;
+    let current = true;
+    setModels([]);
+    setNote("Looking for embedding models…");
+    loadModels(provider)
+      .then((found) => {
+        if (!current) return;
+        const ordered = [...found].sort((a, b) => Number(looksLikeEmbedding(b.id)) - Number(looksLikeEmbedding(a.id)));
+        setModels(ordered);
+        const embedders = ordered.filter((m) => looksLikeEmbedding(m.id));
+        setNote(embedders.length ? "" : "No embedding model found here; agents' files are searched by their words.");
+        if (auto && !value && embedders[0]) onChange({ provider, model: embedders[0].id }, false);
+      })
+      .catch(() => current && setNote("Couldn't list models here; agents' files are searched by their words."));
+    return () => {
+      current = false;
+    };
+  }, [provider]); // value, auto and onChange are read when the provider changes
+
+  return (
+    <div className="model-picker">
+      <div className="row">
+        <div className="field">
+          <label htmlFor="embedding-provider">Runs on</label>
+          <select id="embedding-provider" value={provider} onChange={(e) => setProvider(e.target.value)}>
+            {providers.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+                {p.local ? " (this computer)" : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="field">
+          <label htmlFor="embedding-model">Embedding model</label>
+          <select
+            id="embedding-model"
+            value={value && value.provider === provider ? value.model : ""}
+            onChange={(e) => onChange(e.target.value ? { provider, model: e.target.value } : null, true)}
+          >
+            <option value="">None: search by words</option>
+            {value && value.provider === provider && !models.some((m) => m.id === value.model) && <option value={value.model}>{value.model}</option>}
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.id}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {note && <p className="hint">{note}</p>}
+    </div>
+  );
+}
