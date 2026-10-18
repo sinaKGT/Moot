@@ -56,6 +56,7 @@ from moot.server.security import LOCAL_HOSTS, LocalOnly
 from moot.server.sessions import SessionManager, SessionNotFound, SessionRecord
 from moot.server.sse import event_source
 from moot.storage import SessionListing, export_filename, export_json, export_markdown
+from moot.tools import BUILT_INS, McpServerConfig
 
 STATIC_DIR = Path(__file__).parent / "static"  # the built app (frontend/ builds into it)
 
@@ -254,6 +255,30 @@ def knowledge_errors() -> Iterator[None]:
         raise HTTPException(415, str(exc)) from None
 
 
+class ToolInfo(BaseModel):
+    id: str
+    name: str
+    description: str
+    available: bool
+    note: str = Field(default="", description="why it can't be used, or which service it uses")
+
+
+class McpServerInfo(BaseModel):
+    name: str
+    command: str | None = None
+    args: list[str] = []
+    env_names: list[str] = Field(default=[], description="the variables set (never their values)")
+    url: str | None = None
+    status: str
+    error: str | None = None
+    tools: list[ToolInfo] = []
+
+
+class ToolsOverview(BaseModel):
+    built_in: list[ToolInfo]
+    mcp: list[McpServerInfo]
+
+
 def manager_of(request: Request) -> SessionManager:
     return request.app.state.manager
 
@@ -301,6 +326,7 @@ def create_app(
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        manager.begin()
         yield
         await manager.shutdown()
 
@@ -390,6 +416,69 @@ def create_app(
             raise HTTPException(502, str(exc)) from None
         finally:
             await provider.aclose()
+
+    # -------------------------------------------------------------- tools
+
+    def mcp_info(manager: SessionManager, name: str) -> McpServerInfo:
+        toolbox = manager.tools
+        config = toolbox.mcp.configs[name]
+        connection = toolbox.mcp.connections.get(name)
+        return McpServerInfo(
+            name=name,
+            command=config.command,
+            args=config.args,
+            env_names=sorted(config.env),
+            url=config.url,
+            status=connection.status if connection else "not connected",
+            error=connection.error if connection else None,
+            tools=[
+                ToolInfo(id=s.id, name=s.name, description=s.description, available=True)
+                for s in (
+                    connection.tools if connection and connection.status == "connected" else []
+                )
+            ],
+        )
+
+    @app.get("/api/tools", tags=["tools"])
+    async def tools(manager: Manager) -> ToolsOverview:
+        """The tools agents can be given: built-in ones and those of MCP servers."""
+        toolbox = manager.tools
+        built_in = []
+        for spec in BUILT_INS.values():
+            available, note = toolbox.available(spec.id)
+            built_in.append(
+                ToolInfo(
+                    id=spec.id,
+                    name=spec.name,
+                    description=spec.description,
+                    available=available,
+                    note=note,
+                )
+            )
+        return ToolsOverview(
+            built_in=built_in, mcp=[mcp_info(manager, name) for name in toolbox.mcp.configs]
+        )
+
+    @app.put("/api/tools/mcp/{name}", tags=["tools"])
+    async def put_mcp_server(name: str, body: McpServerConfig, manager: Manager) -> McpServerInfo:
+        """Add or change an MCP server (saved in mcp.json) and connect to it."""
+        with engine_errors():
+            await manager.tools.mcp.put(name, body)
+        return mcp_info(manager, name)
+
+    @app.post("/api/tools/mcp/{name}/reconnect", tags=["tools"])
+    async def reconnect_mcp_server(name: str, manager: Manager) -> McpServerInfo:
+        try:
+            await manager.tools.mcp.reconnect(name)
+        except KeyError:
+            raise HTTPException(404, f"No MCP server {name}") from None
+        return mcp_info(manager, name)
+
+    @app.delete("/api/tools/mcp/{name}", status_code=204, tags=["tools"])
+    async def delete_mcp_server(name: str, manager: Manager) -> Response:
+        if not await manager.tools.mcp.remove(name):
+            raise HTTPException(404, f"No MCP server {name}")
+        return Response(status_code=204)
 
     # -------------------------------------------------------------- knowledge
 

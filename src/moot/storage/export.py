@@ -244,6 +244,9 @@ def _transcript(state: SessionState) -> list[str]:
             continue
         asked = by_id.get(message.reply_to) if message.reply_to else None
         to = f" → {name(asked.speaker_id)}" if asked else ""
+        if message.tools_used:
+            looked = "; ".join(use.summary for use in message.tools_used)
+            lines += [f"*{name(message.speaker_id)} looked up: {looked}*", ""]
         lines += [f"**{name(message.speaker_id)}**{to}: {message.text.strip()}", ""]
         if message.sources:
             lines += [f"*Briefed from its files: {', '.join(message.sources)}*", ""]

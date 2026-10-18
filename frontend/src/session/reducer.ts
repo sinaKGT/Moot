@@ -33,6 +33,7 @@ export interface MessageEntry {
   seconds: number | null;
   model: string | null;
   sources: string[];
+  toolUses: { tool: string; summary: string; ok: boolean }[];
 }
 
 export interface NoticeEntry {
@@ -200,6 +201,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         seconds: null,
         model: null,
         sources: [],
+        toolUses: [],
       };
       return {
         ...next,
@@ -234,6 +236,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
             seconds: null,
             model: null,
             sources: [],
+            toolUses: [],
           };
       let entry: MessageEntry = {
         ...base,
@@ -245,6 +248,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         seconds: m.seconds ?? null,
         model: m.model ?? null,
         sources: m.sources ?? [],
+        toolUses: m.tools_used?.length ? m.tools_used : base.toolUses,
       };
       const asks = m.mentions.length > 0 && SEATED.includes(m.speaker_kind);
       if (asks && m.speaker_kind === "agent") entry = withTag(entry, "question");
@@ -296,6 +300,15 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
       };
       return { ...next, entries, beams: addBeams(next.beams, beams), graph, insightVersion: next.insightVersion + 1 };
     }
+
+    case "tool_used":
+      return {
+        ...next,
+        entries: updateMessage(next, event.message_id, (e) => ({
+          ...e,
+          toolUses: [...e.toolUses, { tool: event.tool, summary: event.summary, ok: event.ok }],
+        })),
+      };
 
     case "notebook_updated":
       return {

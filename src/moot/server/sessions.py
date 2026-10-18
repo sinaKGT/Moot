@@ -18,6 +18,7 @@ from moot.engine import DiscussionEngine, EventStream, ProviderPool
 from moot.knowledge import KnowledgeService, KnowledgeStore
 from moot.providers import PRESETS, Provider, create_provider
 from moot.storage import SessionListing, SessionStore, listing_of
+from moot.tools import McpHub, ToolBox
 
 log = logging.getLogger(__name__)
 
@@ -63,6 +64,7 @@ class SessionManager:
         engine_options: dict | None = None,
         store: SessionStore | None = None,
         knowledge: KnowledgeService | KnowledgeStore | None = None,
+        tools: ToolBox | None = None,
     ) -> None:
         self._sessions: dict[str, SessionRecord] = {}
         self._provider_factory = provider_factory
@@ -73,6 +75,7 @@ class SessionManager:
         if isinstance(knowledge, KnowledgeStore):
             knowledge = KnowledgeService(knowledge, provider_factory)
         self._knowledge = knowledge
+        self._tools = tools or ToolBox(McpHub(None, connect=False))
         if store is not None:
             self._end_interrupted()
 
@@ -83,6 +86,14 @@ class SessionManager:
     @property
     def knowledge(self) -> KnowledgeService:
         return self._knowledge
+
+    @property
+    def tools(self) -> ToolBox:
+        return self._tools
+
+    def begin(self) -> None:
+        """Things to begin once the server's event loop runs: connecting MCP servers."""
+        self._tools.mcp.start()
 
     # ----------------------------------------------------------------- sessions
 
@@ -152,6 +163,7 @@ class SessionManager:
         if self._store is not None:
             self._store.close()
         await self._knowledge.shutdown()
+        await self._tools.aclose()
 
     # ----------------------------------------------------------------- providers
 
@@ -167,7 +179,7 @@ class SessionManager:
         pool = ProviderPool(factory=self._provider_factory) if self._provider_factory else None
         if self._store is not None and not events.closed:
             events.listen(self._store.recorder(state))
-        options = {"knowledge": self._knowledge, **self._engine_options}
+        options = {"knowledge": self._knowledge, "tools": self._tools, **self._engine_options}
         engine = DiscussionEngine(state, providers=pool, events=events, **options)
         record = SessionRecord(state=state, engine=engine)
         self._sessions[state.id] = record

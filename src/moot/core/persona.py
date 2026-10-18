@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import Field, field_validator
 
 from moot.core.base import MootModel, new_id
+
+BUILT_IN_TOOLS = ("web_search", "fetch_page", "calculator")
+MCP_TOOL = re.compile(r"^mcp:[a-z0-9][a-z0-9_-]{0,39}:.{1,200}$")
 
 HEX_COLOR = r"^#[0-9a-fA-F]{6}$"
 
@@ -40,6 +45,18 @@ class Persona(MootModel):
     knowledge: str | None = Field(
         default=None, description="knowledge base id: the files this agent draws on"
     )
+    tools: list[str] = Field(
+        default_factory=list,
+        description="web_search, fetch_page, calculator, or mcp:<server>:<tool>",
+    )
+
+    @field_validator("tools")
+    @classmethod
+    def _known_tools(cls, value: list[str]) -> list[str]:
+        for tool in value:
+            if tool not in BUILT_IN_TOOLS and not MCP_TOOL.match(tool):
+                raise ValueError(f"unknown tool '{tool}'")
+        return list(dict.fromkeys(value))
 
     @field_validator("name")
     @classmethod

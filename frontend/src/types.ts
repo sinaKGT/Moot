@@ -30,6 +30,38 @@ export interface Persona {
   model: ModelRef | null;
   prompt_override: string | null;
   knowledge?: string | null;
+  tools?: string[];
+}
+
+export interface ToolInfo {
+  id: string;
+  name: string;
+  description: string;
+  available: boolean;
+  note: string;
+}
+
+export interface McpServerInfo {
+  name: string;
+  command: string | null;
+  args: string[];
+  env_names: string[];
+  url: string | null;
+  status: string;
+  error: string | null;
+  tools: ToolInfo[];
+}
+
+export interface ToolsOverview {
+  built_in: ToolInfo[];
+  mcp: McpServerInfo[];
+}
+
+export interface McpServerConfig {
+  command?: string | null;
+  args?: string[];
+  env?: Record<string, string>;
+  url?: string | null;
 }
 
 export interface KnowledgeDocument {
@@ -131,6 +163,7 @@ export interface ChatMessage {
   model?: string | null;
   seconds?: number | null;
   sources?: string[];
+  tools_used?: { tool: string; summary: string; ok: boolean }[];
 }
 
 export interface SessionSummary {
@@ -285,6 +318,7 @@ export type MootEvent = Base &
     | { type: "turn_completed"; message: ChatMessage }
     | { type: "moderator_decision"; next_speaker_id: string | null; reason: string }
     | { type: "graph_updated"; links: GraphLink[]; nodes?: GraphNode[]; edges?: GraphEdge[] }
+    | { type: "tool_used"; agent_id: string; message_id: string; tool: string; summary: string; ok: boolean }
     | {
         type: "notebook_updated";
         agent_id: string;
@@ -321,6 +355,7 @@ export const EVENT_TYPES: MootEvent["type"][] = [
   "turn_completed",
   "moderator_decision",
   "graph_updated",
+  "tool_used",
   "notebook_updated",
   "alliance_changed",
   "poll_opened",

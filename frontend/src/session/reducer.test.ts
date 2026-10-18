@@ -274,3 +274,16 @@ describe("a decision conclusion", () => {
     expect(conclusionSections("The panel split.\nBen held firm.")).toEqual([{ heading: null, text: "The panel split.\nBen held firm." }]);
   });
 });
+
+describe("tools", () => {
+  it("shows what an agent looked up on its message, live and after a reload", () => {
+    const live = play([
+      { type: "turn_started", message_id: "m1", speaker_id: "ava", round_index: 0, reply_to: null, purpose: null },
+      { type: "tool_used", agent_id: "ava", message_id: "m1", tool: "web_search", summary: 'web search: "oslo"', ok: true },
+    ]);
+    expect(messages(live)[0].toolUses).toEqual([{ tool: "web_search", summary: 'web search: "oslo"', ok: true }]);
+    const done = play([message("m1", "ava", "Deaths fell.")], live);
+    expect(messages(done)[0].toolUses).toHaveLength(1);
+  });
+});
+

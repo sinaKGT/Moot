@@ -72,6 +72,13 @@ from LM Studio or another provider for meaning search) and, before the agent spe
 privately with what bears on the moment; it cites the file and page. "Try" on the card shows
 what it would be told.
 
+Give an agent tools on its card: web search, reading a web page, a calculator, and the tools
+of any MCP server you add under "Tools" (a command such as `npx -y
+@modelcontextprotocol/server-filesystem D:\Documents`, or a URL). Before it speaks it may look
+things up; everyone sees what it looked up. Web search needs a key in `.env`:
+`TAVILY_API_KEY` (1,000 free searches a month), `BRAVE_API_KEY`, or `SEARXNG_URL` for your own
+SearXNG.
+
 Discussions are saved on this computer as they run (in `%LOCALAPPDATA%\Moot\moot.db` on
 Windows; set `MOOT_DATA_DIR` in `.env` to keep them elsewhere). The team builder lists them:
 open one, take its setup to run it again, or delete it. Export a discussion from its screen as

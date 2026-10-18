@@ -98,6 +98,17 @@ class GraphUpdated(EventBase):
     links: list[GraphLink] = Field(default_factory=list)
 
 
+class ToolUsed(EventBase):
+    """An agent used one of its tools before speaking (everyone sees what it looked up)."""
+
+    type: Literal["tool_used"] = "tool_used"
+    agent_id: str
+    message_id: str
+    tool: str
+    summary: str
+    ok: bool = True
+
+
 class NotebookUpdated(EventBase):
     type: Literal["notebook_updated"] = "notebook_updated"
     agent_id: str
@@ -176,6 +187,7 @@ Event = Annotated[
     | TurnCompleted
     | ModeratorDecision
     | GraphUpdated
+    | ToolUsed
     | NotebookUpdated
     | AllianceChanged
     | PollOpened

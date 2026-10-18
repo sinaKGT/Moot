@@ -18,12 +18,13 @@ import {
   type Draft,
   type DraftAction,
 } from "../../builder/draft";
-import type { Library, Persona, ProviderInfo, SessionSummary, TeamProposal } from "../../types";
+import type { Library, Persona, ProviderInfo, SessionSummary, TeamProposal, ToolsOverview } from "../../types";
 import { seatPositions } from "../Arena";
 import { AgentCard } from "./AgentCard";
 import { EmbeddingPicker, ModelPicker } from "./ModelPicker";
 import { RoundPlanEditor } from "./RoundPlanEditor";
 import { TeamDesigner } from "./TeamDesigner";
+import { ToolsDialog } from "./ToolsDialog";
 
 const PERSONA_TYPE = "application/x-moot-persona";
 const TABLE = 520;
@@ -55,6 +56,11 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null); // the discussion whose setup was taken
   const [designing, setDesigning] = useState(false);
+  const [tools, setTools] = useState<ToolsOverview | null>(null);
+  const [managingTools, setManagingTools] = useState(false);
+  const refreshTools = () => {
+    api.tools().then(setTools).catch(() => setTools({ built_in: [], mcp: [] }));
+  };
   // the designer's panel just taken in: what it said, and the draft before it (to undo)
   const [designed, setDesigned] = useState<{ proposal: TeamProposal; before: Draft } | null>(null);
 
@@ -68,6 +74,7 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
       .then(setProviders)
       .catch((e: Error) => setLoadProblem(e.message));
     api.sessions().then(setSessions).catch(() => setSessions([]));
+    refreshTools();
   }, []);
 
   useEffect(() => {
@@ -155,6 +162,9 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
         <button type="button" className="button accent" onClick={() => setDesigning(true)}>
           Team Designer
         </button>
+        <button type="button" className="button" onClick={() => setManagingTools(true)}>
+          Tools
+        </button>
         <button type="button" className="button" onClick={reset}>
           Start over
         </button>
@@ -197,6 +207,7 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
           </div>
         </div>
       )}
+      {managingTools && <ToolsDialog overview={tools} onChanged={refreshTools} onClose={() => setManagingTools(false)} />}
       {designing && <TeamDesigner library={library} model={draft.defaultModel} onUse={takeProposal} onClose={() => setDesigning(false)} />}
       {found.length > 0 && (
         <div className="builder-problems" role="alert">
@@ -254,6 +265,8 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
             providers={providers}
             defaultModel={draft.defaultModel}
             embeddingModel={draft.embeddingModel}
+            tools={tools}
+            onManageTools={() => setManagingTools(true)}
             canRemove={draft.agents.length > 1}
             onChange={(patch) => dispatch({ type: "updateAgent", key: selected.key, patch })}
             onRemove={() => dispatch({ type: "removeAgent", key: selected.key })}

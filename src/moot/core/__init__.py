@@ -18,6 +18,7 @@ from moot.core.messages import (
     ChatMessage,
     SpeakerKind,
     TokenUsage,
+    ToolUse,
 )
 from moot.core.moderator import AIModerator, HumanModerator, Moderator
 from moot.core.notebook import Notebook, StanceSnapshot
@@ -61,6 +62,7 @@ __all__ = [
     "AllianceStep",
     "ArgumentGraph",
     "ChatMessage",
+    "ToolUse",
     "Edge",
     "EdgeType",
     "Event",

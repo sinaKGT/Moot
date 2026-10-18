@@ -82,6 +82,7 @@ export function fromPersona(persona: Partial<Persona>, agents: DraftAgent[], kee
     model: persona.model ?? null,
     prompt_override: persona.prompt_override ?? null,
     knowledge: persona.knowledge ?? null,
+    tools: [...(persona.tools ?? [])],
   };
 }
 
@@ -320,6 +321,7 @@ export function toConfig(draft: Draft) {
       model: a.model,
       prompt_override: a.prompt_override?.trim() || null,
       knowledge: a.knowledge ?? null,
+      tools: a.tools ?? [],
     })),
     moderator:
       draft.moderator.kind === "human"
@@ -358,7 +360,7 @@ export function loadDraft(): Draft | null {
       ...draft,
       embeddingModel: draft.embeddingModel ?? null,
       embeddingAuto: draft.embeddingAuto ?? true,
-      agents: draft.agents.map((a) => ({ ...a, knowledge: a.knowledge ?? null })),
+      agents: draft.agents.map((a) => ({ ...a, knowledge: a.knowledge ?? null, tools: a.tools ?? [] })),
     };
   } catch {
     return null;

@@ -198,6 +198,7 @@ def turn_prompt(
     reply_to: ChatMessage | None = None,
     own_turn: bool = False,
     knowledge: str | None = None,
+    findings: str | None = None,
 ) -> str:
     """The user message: memory of the discussion, briefing, and what to do now.
 
@@ -207,6 +208,8 @@ def turn_prompt(
     lines = discussion_lines(state, agent, round_index, current)
     if knowledge:
         lines += ["", knowledge]
+    if findings:
+        lines += ["", findings]
     if reminders:
         lines += ["", "About your last answer:"]
         lines += [f"- {reminder}" for reminder in reminders]
@@ -262,13 +265,23 @@ def build_agent_messages(
     reply_to: ChatMessage | None = None,
     own_turn: bool = False,
     knowledge: str | None = None,
+    findings: str | None = None,
 ) -> list[Message]:
     return [
         Message("system", persona_prompt(state.config, agent)),
         Message(
             "user",
             turn_prompt(
-                state, agent, round_index, current, turn, reminders, reply_to, own_turn, knowledge
+                state,
+                agent,
+                round_index,
+                current,
+                turn,
+                reminders,
+                reply_to,
+                own_turn,
+                knowledge,
+                findings,
             ),
         ),
     ]

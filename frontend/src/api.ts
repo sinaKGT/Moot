@@ -6,12 +6,15 @@ import type {
   KnowledgeDocument,
   KnowledgeSearch,
   Library,
+  McpServerConfig,
+  McpServerInfo,
   ModelRef,
   ModelEntry,
   ProviderInfo,
   SessionSummary,
   SessionView,
   TeamProposal,
+  ToolsOverview,
 } from "./types";
 
 export interface DesignRequest {
@@ -99,6 +102,11 @@ export const api = {
   createSession: (config: unknown) => post<SessionSummary>("/api/sessions", config),
   library: () => request<Library>("/api/library"),
   design: (body: DesignRequest) => post<TeamProposal>("/api/designer", body),
+  tools: () => request<ToolsOverview>("/api/tools"),
+  putMcp: (name: string, config: McpServerConfig) =>
+    request<McpServerInfo>(`/api/tools/mcp/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(config) }),
+  reconnectMcp: (name: string) => post<McpServerInfo>(`/api/tools/mcp/${encodeURIComponent(name)}/reconnect`),
+  deleteMcp: (name: string) => request<void>(`/api/tools/mcp/${encodeURIComponent(name)}`, { method: "DELETE" }),
   knowledge: {
     create: (name: string, embedding: ModelRef | null) => post<KnowledgeBase>("/api/knowledge", { name, embedding }),
     get: (id: string) => request<KnowledgeBase>(`/api/knowledge/${id}`),

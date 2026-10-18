@@ -18,6 +18,7 @@ from moot.core import (
     AllianceError,
     ChatMessage,
     HumanModerator,
+    ModelRef,
     Node,
     NodeType,
     Persona,
@@ -31,6 +32,7 @@ from moot.core import (
     SpeakerKind,
     SpeakingOrder,
     TokenUsage,
+    ToolUse,
     new_id,
     winner_poll_spec,
 )
@@ -51,6 +53,7 @@ from moot.core.events import (
     SessionResumed,
     SessionStarted,
     TokenDelta,
+    ToolUsed,
     TurnCompleted,
     TurnStarted,
     VoteCast,
@@ -61,6 +64,7 @@ from moot.engine.mentions import find_mentions
 from moot.engine.moderator import ModeratorBrain, audience_question
 from moot.engine.pool import ProviderPool
 from moot.engine.prompts import build_agent_messages, knowledge_query
+from moot.engine.research import MAX_TOOL_STEPS, ToolChoice, find_spec, findings_block, tool_prompt
 from moot.engine.rule_checks import check_rules
 from moot.engine.stream import EventStream
 from moot.engine.text import NamePrefixStripper, TagFilter, TrailingSpaceHolder
@@ -83,6 +87,7 @@ from moot.providers import (
     Usage,
     complete_structured,
 )
+from moot.tools import ToolBox, ToolResult
 
 DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
 DEFAULT_MAX_REPLY_CHAIN = 2  # a question, its answer, and one answer back
@@ -154,9 +159,13 @@ class DiscussionEngine:
         max_replies_per_round: int | None = None,
         max_moderator_polls: int = 1,
         knowledge: KnowledgeService | None = None,
+        tools: ToolBox | None = None,
+        max_tool_steps: int = MAX_TOOL_STEPS,
     ) -> None:
         self.state = state
         self._knowledge = knowledge
+        self._tools = tools
+        self._max_tool_steps = max_tool_steps
         self.events = events or EventStream()
         self._providers = providers or ProviderPool()
         self._owns_providers = providers is None
@@ -760,9 +769,9 @@ class DiscussionEngine:
         model = config.model_for(agent)
         reminders = self._reminders.pop(agent.id, [])
         brief = await self._knowledge_brief(agent, index, current, reply_to)
-        request = ChatRequest(
-            model=model.model,
-            messages=build_agent_messages(
+
+        def messages(findings: str | None = None) -> list[Message]:
+            return build_agent_messages(
                 self.state,
                 agent,
                 index,
@@ -772,7 +781,13 @@ class DiscussionEngine:
                 reply_to,
                 own_turn,
                 knowledge=brief.text() if brief else None,
-            ),
+                findings=findings,
+            )
+
+        used = await self._research(agent, model, messages(), message_id)
+        request = ChatRequest(
+            model=model.model,
+            messages=messages(findings_block([result for _, result in used]) or None),
             temperature=model.temperature,
         )
         try:
@@ -802,6 +817,7 @@ class DiscussionEngine:
             model=f"{model.provider}/{model.model}",
             seconds=spoken.seconds,
             sources=brief.sources if brief else [],
+            tools_used=[ToolUse(tool=tool, summary=r.summary, ok=r.ok) for tool, r in used],
         )
         self.state.messages.append(message)
         self._last_speaker = agent.id
@@ -812,6 +828,55 @@ class DiscussionEngine:
         if self._build_graph:
             self._graph_queue.put_nowait(message)  # mapped in the background
         return message
+
+    async def _research(
+        self, agent: Persona, model: ModelRef, base: list[Message], message_id: str
+    ) -> list[tuple[str, ToolResult]]:
+        """Let an agent with tools use them before it speaks (see engine.research). Returns
+        (tool id, result) for each use."""
+        if self._tools is None or not agent.tools:
+            return []
+        specs = self._tools.specs_for(agent.tools)
+        if not specs:
+            return []
+        provider = self._providers.get(model)
+        found: list[ToolResult] = []
+        used: list[tuple[str, ToolResult]] = []
+        for step in range(self._max_tool_steps):
+            steps_left = self._max_tool_steps - step
+            question = base[-1].content + "\n" + tool_prompt(specs, found, steps_left)
+            prompt = [*base[:-1], Message("user", question)]
+            try:
+                choice = await complete_structured(
+                    provider,
+                    ChatRequest(model=model.model, messages=prompt, temperature=0.2),
+                    ToolChoice,
+                )
+            except (ProviderError, StructuredOutputError):
+                break  # it speaks with what it has
+            if not choice.tool:
+                break
+            spec = find_spec(specs, choice.tool)
+            if spec is None:
+                found.append(
+                    ToolResult(
+                        False, f"There is no tool called {choice.tool}.", f"tried {choice.tool}"
+                    )
+                )
+                continue
+            result = await self._tools.run(spec, choice.arguments)
+            found.append(result)
+            used.append((spec.id, result))
+            self.events.emit(
+                ToolUsed(
+                    agent_id=agent.id,
+                    message_id=message_id,
+                    tool=spec.id,
+                    summary=result.summary,
+                    ok=result.ok,
+                )
+            )
+        return used
 
     async def _knowledge_brief(
         self, agent: Persona, index: int, current: Round, reply_to: ChatMessage | None

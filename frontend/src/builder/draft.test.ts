@@ -142,6 +142,8 @@ describe("the team builder's draft", () => {
     expect(config.agents[0].knowledge).toBeNull();
     const withFiles = draftReducer(draft, { type: "updateAgent", key: draft.agents[1].key, patch: { knowledge: "kb_1" } });
     expect(toConfig(withFiles).agents[1].knowledge).toBe("kb_1");
+    const withTools = draftReducer(draft, { type: "updateAgent", key: draft.agents[0].key, patch: { tools: ["calculator"] } });
+    expect(toConfig(withTools).agents.map((a) => a.tools)).toEqual([["calculator"], [], []]);
     expect(config.round_plan.rounds[0]).not.toHaveProperty("key");
     const decided = toConfig({ ...draft, decision: true, options: ["Berlin", "Lisbon"] });
     expect(decided.options).toEqual(["Berlin", "Lisbon"]);

@@ -28,6 +28,12 @@ class TokenUsage(MootModel):
     estimated: bool = Field(default=False, description="True when the provider didn't report it")
 
 
+class ToolUse(MootModel):
+    tool: str
+    summary: str
+    ok: bool = True
+
+
 class ChatMessage(MootModel):
     id: str = Field(default_factory=lambda: new_id("msg"))
     speaker_id: str
@@ -42,4 +48,7 @@ class ChatMessage(MootModel):
     seconds: float | None = Field(default=None, ge=0, description="how long the answer took")
     sources: list[str] = Field(
         default_factory=list, description="the agent's own files it was briefed from, this turn"
+    )
+    tools_used: list[ToolUse] = Field(
+        default_factory=list, description="what the agent looked up before this turn"
     )

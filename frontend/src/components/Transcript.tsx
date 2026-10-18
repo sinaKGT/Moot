@@ -110,6 +110,17 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
             ))}
           </span>
         </div>
+        {entry.toolUses.length > 0 && (
+          <div className="looked-up">
+            Looked up:{" "}
+            {entry.toolUses.map((use, i) => (
+              <span key={i} className={use.ok ? "" : "failed"}>
+                {i > 0 && " · "}
+                {use.summary}
+              </span>
+            ))}
+          </div>
+        )}
         <p>
           {withMentions(entry.text, agents)}
           {streaming && <span className="caret" style={{ color }} />}

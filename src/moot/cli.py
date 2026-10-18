@@ -99,6 +99,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     from moot.knowledge import KNOWLEDGE_DB, KnowledgeError, KnowledgeStore
     from moot.server import LOCAL_HOSTS, SessionManager, create_app
     from moot.storage import DB_NAME, SessionStore, StoreError, default_data_dir
+    from moot.tools import MCP_FILE, McpHub, ToolBox
 
     load_env_file(Path.cwd() / ".env")
     data_dir = args.data_dir or default_data_dir()
@@ -109,7 +110,8 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         print(f"Moot can't open its saved data: {exc}", file=sys.stderr)
         return 1
     local = args.host in LOCAL_HOSTS
-    manager = SessionManager(store=store, knowledge=knowledge)
+    tools = ToolBox(McpHub(data_dir / MCP_FILE))
+    manager = SessionManager(store=store, knowledge=knowledge, tools=tools)
     app = create_app(manager, allowed_hosts=LOCAL_HOSTS if local else None)
     shown_host = f"[{args.host}]" if ":" in args.host else args.host
     url = f"http://{shown_host}:{args.port}"
