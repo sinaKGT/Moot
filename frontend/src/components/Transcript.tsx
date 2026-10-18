@@ -62,7 +62,7 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
       const sections = conclusionSections(statement);
       const decided = sections.some((s) => s.heading);
       return (
-        <article key={entry.id} className="card conclusion">
+        <article key={entry.id} id={`msg-${entry.id}`} className="card conclusion">
           <div className="card-head">
             <span className="speaker">{names[entry.speakerId]}</span>
             <span className="tags">
@@ -95,7 +95,7 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
       );
     }
     return (
-      <article key={entry.id} className={`card${streaming ? " live" : ""}`} aria-busy={streaming}>
+      <article key={entry.id} id={`msg-${entry.id}`} className={`card${streaming ? " live" : ""}`} aria-busy={streaming}>
         <div className="card-head">
           <span className="speaker" style={{ color }}>
             {names[entry.speakerId] ?? entry.speakerId}

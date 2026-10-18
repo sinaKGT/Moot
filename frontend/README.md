@@ -8,7 +8,7 @@ Node.js: `moot serve` serves it. You only need Node.js 22+ to change the app.
 ```
 npm install        # once
 npm run dev        # live-reloading app at http://localhost:5173 (start `moot serve` too)
-npm test           # unit tests (event handling, commands, team-builder draft, geometry)
+npm test           # unit tests (events, commands, team-builder draft, map layout, geometry)
 npm run build      # type-check, then build into src/moot/server/static
 ```
 
@@ -24,3 +24,5 @@ Layout:
   moderator, rules, round-plan editor)
 - `src/components/`: the discussion screen (rail, round table, poll card, transcript, input
   bar, "your move" prompts)
+- `src/insights/`: the "Map & alliances" view: the argument map (its layout in
+  `mapLayout.ts`, pure and tested) and the alliance monitor

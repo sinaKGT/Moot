@@ -63,6 +63,10 @@ polls appear over the table, and the moderator closes with a conclusion. Type to
 asks an agent (autocomplete included), `/` gives commands. When you moderate, Moot tells you
 whose move it is.
 
+Switch to "Map & alliances" to see the argument map (every point by speaker and round, and
+how points support, challenge or answer each other) and who backs whom, live; the round slider
+shows both as they were after any round.
+
 The full API is documented at http://127.0.0.1:8765/docs (and a plain test page is at /dev).
 Close the window (or press Ctrl+C) to stop it. Changing the app itself: see
 `frontend/README.md`.

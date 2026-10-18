@@ -9,6 +9,7 @@ from pydantic import Field, TypeAdapter
 
 from moot.core.alliances import Alliance, AllianceChange
 from moot.core.base import MootModel, utc_now
+from moot.core.graph import ArgumentGraph, Edge, Node
 from moot.core.messages import ChatMessage
 from moot.core.polls import Poll, PollResult
 
@@ -21,6 +22,10 @@ class EventBase(MootModel):
 class SessionStarted(EventBase):
     type: Literal["session_started"] = "session_started"
     session_id: str
+    graph: ArgumentGraph = Field(
+        default_factory=ArgumentGraph,
+        description="the argument graph so far (the topic), so the event stream rebuilds it",
+    )
 
 
 class SessionPaused(EventBase):
@@ -88,6 +93,8 @@ class GraphUpdated(EventBase):
     type: Literal["graph_updated"] = "graph_updated"
     node_ids: list[str] = Field(default_factory=list)
     edge_ids: list[str] = Field(default_factory=list)
+    nodes: list[Node] = Field(default_factory=list, description="the new points, in full")
+    edges: list[Edge] = Field(default_factory=list, description="the new links, in full")
     links: list[GraphLink] = Field(default_factory=list)
 
 

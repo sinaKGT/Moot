@@ -286,7 +286,9 @@ class DiscussionEngine:
         self.check_providers()
 
         self.state.status = SessionStatus.RUNNING
-        self.events.emit(SessionStarted(session_id=self.state.id))
+        self.events.emit(
+            SessionStarted(session_id=self.state.id, graph=self.state.graph.model_copy(deep=True))
+        )
         graph_worker = asyncio.create_task(self._graph_worker()) if self._build_graph else None
         reason: str | None = None
         try:
@@ -941,7 +943,7 @@ class DiscussionEngine:
             return
         message, spoken = result
         questions = self._moderator.parse_plan(spoken.captured.get("plan", ""), message.text)
-        node_ids = [
+        nodes = [
             self.state.graph.add_node(
                 Node(
                     type=NodeType.SUBQUESTION,
@@ -949,11 +951,13 @@ class DiscussionEngine:
                     speaker_id=MODERATOR_ID,
                     message_id=message.id,
                 )
-            ).id
+            )
             for question in questions
         ]
-        if node_ids:
-            self.events.emit(GraphUpdated(node_ids=node_ids))
+        if nodes:
+            self.events.emit(
+                GraphUpdated(node_ids=[n.id for n in nodes], nodes=[n.model_copy() for n in nodes])
+            )
 
     async def _final_report(self) -> None:
         """The AI moderator's conclusion, ending with a question for the audience."""
@@ -1059,5 +1063,11 @@ class DiscussionEngine:
                 )
             )
         self.events.emit(
-            GraphUpdated(node_ids=update.node_ids, edge_ids=update.edge_ids, links=links)
+            GraphUpdated(
+                node_ids=update.node_ids,
+                edge_ids=update.edge_ids,
+                nodes=[graph.node(node_id).model_copy() for node_id in update.node_ids],
+                edges=[edges[edge_id].model_copy() for edge_id in update.edge_ids],
+                links=links,
+            )
         )

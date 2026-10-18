@@ -1,8 +1,9 @@
 // The discussion screen: The Chamber.
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { parseInput, type Action } from "../commands";
+import { InsightsView } from "../insights/InsightsView";
 import { useSession } from "../session/useSession";
 import { Arena, Legend } from "./Arena";
 import { Composer } from "./Composer";
@@ -17,10 +18,36 @@ const STATUS = {
   finished: { label: "■ FINISHED", tone: "" },
 } as const;
 
+type View = "discussion" | "map";
+
+const viewInUrl = (): View => (new URLSearchParams(window.location.search).get("view") === "map" ? "map" : "discussion");
+
 export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void }) {
   const { view, state, names, error } = useSession(id);
   const [problem, setProblem] = useState<string | null>(null);
   const [hiddenPoll, setHiddenPoll] = useState<string | null>(null);
+  const [screen, setScreen] = useState<View>(viewInUrl);
+  const [showMessage, setShowMessage] = useState<string | null>(null);
+
+  const switchTo = (next: View) => {
+    const params = new URLSearchParams(window.location.search);
+    if (next === "map") params.set("view", "map");
+    else params.delete("view");
+    window.history.replaceState(null, "", `?${params}`);
+    setScreen(next);
+  };
+
+  // "Show in the discussion" from the map: back to the transcript, scrolled to that message
+  useEffect(() => {
+    if (screen !== "discussion" || !showMessage) return;
+    const card = document.getElementById(`msg-${showMessage}`);
+    if (card) {
+      card.scrollIntoView({ block: "center" });
+      card.classList.add("flash");
+      window.setTimeout(() => card.classList.remove("flash"), 2200);
+    }
+    setShowMessage(null);
+  }, [screen, showMessage]);
 
   const run = useCallback(
     async (action: Action) => {
@@ -87,6 +114,14 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
           <h1 className="topic">{config.topic}</h1>
         </div>
         <div className="chips">
+          <div className="views" role="tablist" aria-label="View">
+            <button type="button" role="tab" aria-selected={screen === "discussion"} onClick={() => switchTo("discussion")}>
+              Discussion
+            </button>
+            <button type="button" role="tab" aria-selected={screen === "map"} onClick={() => switchTo("map")}>
+              Map &amp; alliances
+            </button>
+          </div>
           <span className={`chip ${status.tone}`}>{state.status === "finished" && state.endReason !== "completed" ? `■ ${state.endReason?.toUpperCase()}` : status.label}</span>
           {round && (
             <span className="chip">
@@ -100,6 +135,18 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
         </div>
       </header>
 
+      {screen === "map" ? (
+        <InsightsView
+          sessionId={id}
+          config={config}
+          state={state}
+          names={names}
+          onShowMessage={(messageId) => {
+            setShowMessage(messageId);
+            switchTo("discussion");
+          }}
+        />
+      ) : (
       <div className="body">
         <aside className="rail">
           <RoundPlan rounds={rounds} state={state} />
@@ -127,6 +174,7 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
           <Transcript state={state} agents={agents} rounds={rounds} names={names} human={human} />
         </section>
       </div>
+      )}
 
       <div className="dock">
         {human && state.waitingFor && state.status !== "finished" && (

@@ -197,6 +197,36 @@ describe("splitConclusion", () => {
   });
 });
 
+describe("the argument graph", () => {
+  const point = (id: string, speaker: string, round: number) => ({
+    id,
+    type: "claim" as const,
+    text: id,
+    speaker_id: speaker,
+    round_index: round,
+    message_id: null,
+    addressed_to: [],
+    sources: [],
+  });
+
+  it("is rebuilt from the start and each update, and refreshes the server's views", () => {
+    const topic = { ...point("t", "x", 0), type: "topic" as const, speaker_id: null, round_index: null };
+    const state = play([
+      { type: "session_started", session_id: "s", graph: { nodes: { t: topic }, edges: [] } },
+      { type: "graph_updated", links: [], nodes: [point("a1", "ava", 0)], edges: [] },
+      {
+        type: "graph_updated",
+        links: [{ type: "challenges", source_speaker: "ben", target_speaker: "ava", message_id: null }],
+        nodes: [point("b1", "ben", 0)],
+        edges: [{ id: "e1", type: "challenges", source: "b1", target: "a1", speaker_id: "ben" }],
+      },
+    ]);
+    expect(Object.keys(state.graph.nodes)).toEqual(["t", "a1", "b1"]);
+    expect(state.graph.edges.map((e) => e.id)).toEqual(["e1"]);
+    expect(state.insightVersion).toBe(2);
+  });
+});
+
 describe("a decision", () => {
   it("labels an agent's choice by the option's letter", () => {
     expect(choiceLabel(" berlin", ["Lisbon", "Berlin"])).toBe("OPTION B");

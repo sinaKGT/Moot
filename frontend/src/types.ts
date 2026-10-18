@@ -146,17 +146,69 @@ export interface PollResult {
   voters: string[];
 }
 
+export type AllianceChange = "proposed" | "accepted" | "refused" | "left" | "dissolved";
+
+export interface AllianceStep {
+  change: AllianceChange;
+  agent_id: string | null;
+  targets: string[];
+  round_index: number | null;
+  reason: string;
+}
+
 export interface Alliance {
   id: string;
   goal: string;
   proposed_by: string;
   members: string[];
   invited: string[];
+  refused?: string[];
+  left?: string[];
   status: "proposed" | "active" | "dissolved";
+  history?: AllianceStep[];
+}
+
+export type Side = "for" | "against" | "mixed";
+
+/** What the alliance monitor shows, up to a round (GET /api/sessions/{id}/alliances). */
+export interface AllianceMonitor {
+  up_to_round: number | null;
+  relations: { source: string; target: string; support: number; challenge: number }[];
+  pairs: { first: string; second: string; support: number; challenge: number; allied: boolean }[];
+  sides: Record<string, Side | null>;
+  alliances: Alliance[];
+  mismatches: { alliance_id: string; challenger: string; ally: string; challenges: number; supports: number }[];
+}
+
+export type NodeType = "topic" | "subquestion" | "claim" | "evidence" | "question" | "concession";
+export type EdgeType = "supports" | "challenges" | "answers" | "refines" | "concedes_to";
+
+export interface GraphNode {
+  id: string;
+  type: NodeType;
+  text: string;
+  speaker_id: string | null;
+  round_index: number | null;
+  message_id: string | null;
+  addressed_to: string[];
+  sources: string[];
+}
+
+export interface GraphEdge {
+  id: string;
+  type: EdgeType;
+  source: string;
+  target: string;
+  speaker_id: string | null;
+}
+
+export interface ArgumentGraph {
+  nodes: Record<string, GraphNode>;
+  edges: GraphEdge[];
 }
 
 export interface GraphLink {
-  type: "supports" | "challenges" | "answers" | "refines" | "concedes_to";
+  type: EdgeType;
   source_speaker: string | null;
   target_speaker: string | null;
   message_id: string | null;
@@ -168,7 +220,7 @@ interface Base {
 
 export type MootEvent = Base &
   (
-    | { type: "session_started"; session_id: string }
+    | { type: "session_started"; session_id: string; graph?: ArgumentGraph }
     | { type: "session_paused" }
     | { type: "session_resumed" }
     | { type: "session_ended"; reason: "completed" | "stopped" | "error" }
@@ -185,7 +237,7 @@ export type MootEvent = Base &
     | { type: "token_delta"; message_id: string; text: string }
     | { type: "turn_completed"; message: ChatMessage }
     | { type: "moderator_decision"; next_speaker_id: string | null; reason: string }
-    | { type: "graph_updated"; links: GraphLink[] }
+    | { type: "graph_updated"; links: GraphLink[]; nodes?: GraphNode[]; edges?: GraphEdge[] }
     | {
         type: "notebook_updated";
         agent_id: string;
@@ -195,7 +247,7 @@ export type MootEvent = Base &
       }
     | {
         type: "alliance_changed";
-        change: "proposed" | "accepted" | "refused" | "left" | "dissolved";
+        change: AllianceChange;
         agent_id: string | null;
         targets: string[];
         reason: string;

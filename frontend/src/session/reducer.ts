@@ -3,6 +3,7 @@
 
 import type {
   Alliance,
+  ArgumentGraph,
   MootEvent,
   Poll,
   PollResult,
@@ -80,6 +81,10 @@ export interface DiscussionState {
   alliances: Record<string, Alliance>;
   beams: Beam[];
   conclusionId: string | null;
+  /** The argument graph, rebuilt from the events: the start gives the topic, updates add to it. */
+  graph: ArgumentGraph;
+  /** Goes up whenever the graph or an alliance changes, so views computed by the server refresh. */
+  insightVersion: number;
 }
 
 export const initialState: DiscussionState = {
@@ -96,6 +101,8 @@ export const initialState: DiscussionState = {
   alliances: {},
   beams: [],
   conclusionId: null,
+  graph: { nodes: {}, edges: [] },
+  insightVersion: 0,
 };
 
 export const MAX_BEAMS = 6;
@@ -141,7 +148,7 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
 
   switch (event.type) {
     case "session_started":
-      return { ...next, status: "running" };
+      return { ...next, status: "running", graph: event.graph ?? next.graph };
     case "session_paused":
       return { ...next, status: "paused" };
     case "session_resumed":
@@ -260,7 +267,12 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
           entries = entries.map((e) => (e.kind === "message" && e.id === message_id ? withTag(e, kind) : e));
         }
       });
-      return { ...next, entries, beams: addBeams(next.beams, beams) };
+      const added = event.nodes ?? [];
+      const graph = {
+        nodes: added.length ? { ...next.graph.nodes, ...Object.fromEntries(added.map((n) => [n.id, n])) } : next.graph.nodes,
+        edges: event.edges?.length ? [...next.graph.edges, ...event.edges] : next.graph.edges,
+      };
+      return { ...next, entries, beams: addBeams(next.beams, beams), graph, insightVersion: next.insightVersion + 1 };
     }
 
     case "notebook_updated":
@@ -284,7 +296,12 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         left: a.members.length ? `${who} left the alliance with ${others(a.members)}${reason}` : `${who} withdrew the alliance offer${reason}`,
         dissolved: "The alliance has ended",
       }[event.change];
-      return { ...next, alliances: { ...next.alliances, [a.id]: a }, entries: notice(text, "alliance") };
+      return {
+        ...next,
+        alliances: { ...next.alliances, [a.id]: a },
+        entries: notice(text, "alliance"),
+        insightVersion: next.insightVersion + 1,
+      };
     }
 
     case "poll_opened":
