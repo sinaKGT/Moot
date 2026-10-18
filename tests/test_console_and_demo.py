@@ -54,7 +54,7 @@ def test_colour_output_uses_agent_colours():
     out = io.StringIO()
     pool = ProviderPool(factory=lambda preset_id: FakeProvider())
     asyncio.run(run_in_console(state, providers=pool, out=out, color=True))
-    assert "\x1b[38;2;34;211;238m" in out.getvalue()  # Ava's cyan
+    assert "\x1b[38;2;96;165;250m" in out.getvalue()  # Ava's blue
 
 
 def test_debate_command(monkeypatch, capsys):

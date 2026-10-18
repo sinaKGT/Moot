@@ -50,9 +50,15 @@ round, `/remind Ben keep it short` reminds an agent, and `/finish` ends the disc
 ## Run the server
 
 Double-click `serve.bat` (or run `uv run moot serve --open`). Moot starts on this computer at
-http://127.0.0.1:8765 and opens a temporary test page in your browser: start a demo
-discussion, watch it live, talk to the agents and steer it. The full API is documented at
-http://127.0.0.1:8765/docs. Close the window (or press Ctrl+C) to stop it.
+http://127.0.0.1:8765 and opens in your browser. Pick a topic and a model, choose who
+moderates, and watch the round table: the speaker glows, beams show challenges, support and
+questions, polls appear over the table, and the moderator closes with a conclusion. Type to
+join in: `@` asks an agent (autocomplete included), `/` gives commands. When you moderate,
+Moot tells you whose move it is.
+
+The full API is documented at http://127.0.0.1:8765/docs (and a plain test page is at /dev).
+Close the window (or press Ctrl+C) to stop it. Changing the app itself: see
+`frontend/README.md`.
 
 The server only answers this computer and refuses requests from other websites, since it has
 no login and uses your API keys.

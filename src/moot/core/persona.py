@@ -28,7 +28,7 @@ class Traits(MootModel):
 class Persona(MootModel):
     id: str = Field(default_factory=lambda: new_id("agt"))
     name: str = Field(min_length=1, max_length=40)
-    color: str = Field(default="#22d3ee", pattern=HEX_COLOR)
+    color: str = Field(default="#60a5fa", pattern=HEX_COLOR)
     role: str = Field(default="", description="short title, e.g. 'Economist'")
     viewpoint: str = Field(default="", description="what this agent believes and argues for")
     motivation: str = Field(default="", description="what it wants from the discussion")

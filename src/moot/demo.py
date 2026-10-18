@@ -53,7 +53,7 @@ def demo_config(
             Persona(
                 name="Ava",
                 role="Advocate",
-                color="#22d3ee",
+                color="#60a5fa",
                 viewpoint="You argue in favour of the proposal in the topic.",
                 motivation="Win the debate by building the strongest case for the proposal.",
                 thinking_style="Constructive: focuses on benefits and practical solutions.",
@@ -62,7 +62,7 @@ def demo_config(
             Persona(
                 name="Ben",
                 role="Critic",
-                color="#f97316",
+                color="#fb7185",
                 viewpoint="You argue against the proposal in the topic.",
                 motivation="Win the debate by exposing the weaknesses of the proposal.",
                 thinking_style=(
@@ -74,7 +74,7 @@ def demo_config(
             Persona(
                 name="Cleo",
                 role="Pragmatist",
-                color="#a78bfa",
+                color="#a3e635",
                 viewpoint=(
                     "You start undecided and side with whichever arguments hold up best in "
                     "practice."

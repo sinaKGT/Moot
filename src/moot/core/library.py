@@ -9,7 +9,7 @@ _STARTERS: tuple[Persona, ...] = (
     Persona(
         id="lib_skeptic",
         name="Skeptic",
-        color="#f97316",
+        color="#fb7185",
         role="Critical thinker",
         motivation="Get to the truth by testing every claim.",
         thinking_style=(
@@ -21,7 +21,7 @@ _STARTERS: tuple[Persona, ...] = (
     Persona(
         id="lib_pragmatist",
         name="Pragmatist",
-        color="#22c55e",
+        color="#a3e635",
         role="Practical advisor",
         motivation="Reach a decision that works in practice.",
         thinking_style="Practical: focuses on feasibility, cost and real-world constraints.",
@@ -30,7 +30,7 @@ _STARTERS: tuple[Persona, ...] = (
     Persona(
         id="lib_domain_expert",
         name="Domain Expert",
-        color="#3b82f6",
+        color="#38bdf8",
         role="Specialist",
         motivation="Keep the discussion grounded in expert knowledge.",
         expertise="Set this to the field the topic needs.",
@@ -40,7 +40,7 @@ _STARTERS: tuple[Persona, ...] = (
     Persona(
         id="lib_devils_advocate",
         name="Devil's Advocate",
-        color="#ef4444",
+        color="#f472b6",
         role="Contrarian",
         motivation="Win the argument by exposing weaknesses in the majority view.",
         thinking_style="Contrarian: deliberately argues the opposing side.",
@@ -49,7 +49,7 @@ _STARTERS: tuple[Persona, ...] = (
     Persona(
         id="lib_innovator",
         name="Innovator",
-        color="#e879f9",
+        color="#facc15",
         role="Creative thinker",
         motivation="Find a better option that nobody has considered yet.",
         thinking_style="Imaginative: proposes unconventional ideas and reframes the problem.",

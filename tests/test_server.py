@@ -70,7 +70,8 @@ def read_events(client, session_id, **kwargs):
 def test_health_home_and_test_page(client):
     assert client.get("/api/health").json()["status"] == "ok"
     home = client.get("/", follow_redirects=False)
-    assert (home.status_code, home.headers["location"]) == (307, "/dev")
+    assert home.status_code == 200 and '<div id="root">' in home.text  # the built app
+    assert client.get("/favicon.svg").status_code == 200
     page = client.get("/dev")
     assert page.status_code == 200 and "server test page" in page.text
     assert client.get("/openapi.json").json()["info"]["title"] == "Moot"
@@ -316,3 +317,22 @@ def test_serve_command(monkeypatch, tmp_path, capsys):
     assert calls[1][1]["port"] == 9000
     assert "Warning: anyone who can reach this address" in capsys.readouterr().out
     assert opened == []
+
+
+# ------------------------------------------------------------------ the app
+
+
+def test_the_built_app_is_served_when_present(tmp_path):
+    (tmp_path / "assets").mkdir()
+    (tmp_path / "index.html").write_text("<!doctype html><title>Moot app</title>", "utf-8")
+    (tmp_path / "assets" / "app.js").write_text("console.log('moot')", "utf-8")
+    (tmp_path / "favicon.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>", "utf-8")
+    with TestClient(create_app(static_dir=tmp_path), base_url="http://127.0.0.1") as app:
+        assert "Moot app" in app.get("/").text
+        script = app.get("/assets/app.js")
+        assert script.status_code == 200 and "moot" in script.text
+        assert app.get("/favicon.svg").headers["content-type"].startswith("image/svg")
+
+    with TestClient(create_app(static_dir=tmp_path / "none"), base_url="http://127.0.0.1") as bare:
+        assert bare.get("/", follow_redirects=False).headers["location"] == "/dev"
+        assert bare.get("/favicon.svg").status_code == 404

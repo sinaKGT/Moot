@@ -75,15 +75,27 @@ class ModeratorDecision(EventBase):
     reason: str
 
 
+class GraphLink(MootModel):
+    """A new link in the argument graph, as who-did-what-to-whom (for the round table)."""
+
+    type: str = Field(description="supports, challenges, answers, refines or concedes_to")
+    source_speaker: str | None
+    target_speaker: str | None
+    message_id: str | None = Field(default=None, description="the message the new point is from")
+
+
 class GraphUpdated(EventBase):
     type: Literal["graph_updated"] = "graph_updated"
     node_ids: list[str] = Field(default_factory=list)
     edge_ids: list[str] = Field(default_factory=list)
+    links: list[GraphLink] = Field(default_factory=list)
 
 
 class NotebookUpdated(EventBase):
     type: Literal["notebook_updated"] = "notebook_updated"
     agent_id: str
+    verdict: Literal["yes", "no", "unsure"] | None = None
+    confidence: float | None = None
 
 
 class AllianceChanged(EventBase):

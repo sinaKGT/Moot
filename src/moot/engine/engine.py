@@ -36,6 +36,7 @@ from moot.core import (
 from moot.core.events import (
     EngineNotice,
     ErrorEvent,
+    GraphLink,
     GraphUpdated,
     ModeratorDecision,
     NotebookUpdated,
@@ -857,8 +858,12 @@ class DiscussionEngine:
             update = parse_notes(notes)
         except ValueError:
             return
-        apply_notes(self.state, agent, update, index)
-        self.events.emit(NotebookUpdated(agent_id=agent.id))
+        notebook = apply_notes(self.state, agent, update, index)
+        self.events.emit(
+            NotebookUpdated(
+                agent_id=agent.id, verdict=notebook.verdict, confidence=notebook.confidence
+            )
+        )
 
     def _turn_failed(self, agent: Persona, index: int, message_id: str, error: str) -> None:
         self._failures += 1
@@ -1026,4 +1031,20 @@ class DiscussionEngine:
                 ErrorEvent(message=f"Argument graph not updated: {exc}", message_id=message.id)
             )
             return
-        self.events.emit(GraphUpdated(node_ids=update.node_ids, edge_ids=update.edge_ids))
+        graph = self.state.graph
+        edges = {edge.id: edge for edge in graph.edges}
+        links = []
+        for edge_id in update.edge_ids:
+            edge = edges[edge_id]
+            source, target = graph.node(edge.source), graph.node(edge.target)
+            links.append(
+                GraphLink(
+                    type=edge.type.value,
+                    source_speaker=source.speaker_id,
+                    target_speaker=target.speaker_id,
+                    message_id=source.message_id,
+                )
+            )
+        self.events.emit(
+            GraphUpdated(node_ids=update.node_ids, edge_ids=update.edge_ids, links=links)
+        )

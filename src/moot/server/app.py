@@ -12,10 +12,12 @@ from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import asdict
 from datetime import datetime
 from importlib.resources import files
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from moot import __version__
@@ -40,6 +42,8 @@ from moot.providers import PRESETS, ProviderError
 from moot.server.security import LOCAL_HOSTS, LocalOnly
 from moot.server.sessions import SessionManager, SessionNotFound, SessionRecord
 from moot.server.sse import event_source
+
+STATIC_DIR = Path(__file__).parent / "static"  # the built app (frontend/ builds into it)
 
 # ------------------------------------------------------------------ API models
 
@@ -193,6 +197,7 @@ def create_app(
     *,
     allowed_hosts: Sequence[str] | None = LOCAL_HOSTS,
     allowed_origins: Sequence[str] = (),
+    static_dir: Path = STATIC_DIR,
 ) -> FastAPI:
     """The server app. `allowed_hosts=None` accepts any host (serving on the network).
 
@@ -216,8 +221,23 @@ def create_app(
     app.add_middleware(LocalOnly, hosts=allowed_hosts, origins=allowed_origins)
 
     @app.get("/", include_in_schema=False)
-    async def home() -> RedirectResponse:
+    async def home() -> Response:
+        """The app, once built; until then, the test page."""
+        index = static_dir / "index.html"
+        if index.is_file():
+            return HTMLResponse(index.read_text("utf-8"))
         return RedirectResponse("/dev")
+
+    @app.get("/favicon.svg", include_in_schema=False)
+    async def favicon() -> Response:
+        icon = static_dir / "favicon.svg"
+        if icon.is_file():
+            return FileResponse(icon, media_type="image/svg+xml")
+        raise HTTPException(404)
+
+    app.mount(
+        "/assets", StaticFiles(directory=static_dir / "assets", check_dir=False), name="assets"
+    )
 
     @app.get("/dev", include_in_schema=False)
     async def dev_page() -> HTMLResponse:
