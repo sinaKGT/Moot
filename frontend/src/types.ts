@@ -85,12 +85,15 @@ export interface ChatMessage {
   mentions: string[];
   reply_to: string | null;
   usage: { prompt_tokens: number; completion_tokens: number } | null;
+  model?: string | null;
+  seconds?: number | null;
 }
 
 export interface SessionSummary {
   id: string;
   topic: string;
   status: "setup" | "running" | "paused" | "finished";
+  end_reason?: "completed" | "stopped" | "error" | null;
   created_at: string;
   current_round: number | null;
   rounds: number;

@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
@@ -43,6 +43,7 @@ from moot.providers import PRESETS, ProviderError
 from moot.server.security import LOCAL_HOSTS, LocalOnly
 from moot.server.sessions import SessionManager, SessionNotFound, SessionRecord
 from moot.server.sse import event_source
+from moot.storage import SessionListing, export_filename, export_json, export_markdown
 
 STATIC_DIR = Path(__file__).parent / "static"  # the built app (frontend/ builds into it)
 
@@ -53,6 +54,7 @@ class SessionSummary(BaseModel):
     id: str
     topic: str
     status: str
+    end_reason: str | None = Field(default=None, description="completed, stopped or error")
     created_at: datetime
     current_round: int | None
     rounds: int
@@ -161,6 +163,7 @@ def summarize(record: SessionRecord) -> SessionSummary:
         id=state.id,
         topic=config.topic,
         status=state.status.value,
+        end_reason=state.end_reason,
         created_at=state.created_at,
         current_round=state.current_round,
         rounds=len(config.round_plan),
@@ -169,6 +172,23 @@ def summarize(record: SessionRecord) -> SessionSummary:
         human_moderator=isinstance(config.moderator, HumanModerator),
         waiting_for=record.engine.waiting_for,
         error=record.error,
+    )
+
+
+def summarize_saved(listing: SessionListing) -> SessionSummary:
+    """A saved session that hasn't been opened since the server started."""
+    return SessionSummary(
+        id=listing.id,
+        topic=listing.topic,
+        status=listing.status.value,
+        end_reason=listing.end_reason,
+        created_at=listing.created_at,
+        current_round=listing.current_round,
+        rounds=listing.rounds,
+        agents=listing.agents,
+        moderator=listing.moderator,
+        human_moderator=listing.human_moderator,
+        waiting_for=None,
     )
 
 
@@ -311,7 +331,11 @@ def create_app(
 
     @app.get("/api/sessions", tags=["sessions"])
     async def list_sessions(manager: Manager) -> list[SessionSummary]:
-        return [summarize(record) for record in manager.all()]
+        """Every discussion, newest first, including saved ones from earlier runs."""
+        return [
+            summarize(record) if record is not None else summarize_saved(listing)
+            for listing, record in manager.listings()
+        ]
 
     @app.post("/api/sessions", status_code=201, tags=["sessions"])
     async def create_session(config: SessionConfig, manager: Manager) -> SessionSummary:
@@ -333,13 +357,35 @@ def create_app(
         return SessionView(summary=summarize(record), state=record.state)
 
     @app.delete("/api/sessions/{session_id}", status_code=204, tags=["sessions"])
-    async def delete_session(
-        record: Session,
-        manager: Manager,
-    ) -> Response:
-        """Remove a session, ending it at once if it is running."""
-        await manager.delete(record.id)
+    async def delete_session(session_id: str, manager: Manager) -> Response:
+        """Remove a session for good (also from disk), ending it at once if it is running."""
+        try:
+            await manager.delete(session_id)
+        except SessionNotFound:
+            raise HTTPException(404, f"No session {session_id}") from None
         return Response(status_code=204)
+
+    @app.get("/api/sessions/{session_id}/export", tags=["sessions"])
+    async def export_session(
+        record: Session,
+        format: Annotated[
+            Literal["markdown", "json"],
+            Query(description="markdown: a readable report; json: everything, to keep"),
+        ] = "markdown",
+    ) -> Response:
+        """Download the discussion: transcript, conclusion, polls, alliances, argument map."""
+        if format == "json":
+            body = export_json(record.state, record.engine.events.history)
+            media, extension = "application/json", "json"
+        else:
+            body = export_markdown(record.state)
+            media, extension = "text/markdown; charset=utf-8", "md"
+        filename = export_filename(record.state, extension)
+        return Response(
+            body,
+            media_type=media,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # -------------------------------------------------------------- controls
 

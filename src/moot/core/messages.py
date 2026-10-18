@@ -38,3 +38,5 @@ class ChatMessage(MootModel):
     reply_to: str | None = Field(default=None, description="id of the message being answered")
     created_at: datetime = Field(default_factory=utc_now)
     usage: TokenUsage | None = None
+    model: str | None = Field(default=None, description="provider/model that wrote it")
+    seconds: float | None = Field(default=None, ge=0, description="how long the answer took")

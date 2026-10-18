@@ -74,6 +74,7 @@ export const api = {
     request<ModelEntry[]>(`/api/providers/${encodeURIComponent(provider)}/models`),
   sessions: () => request<SessionSummary[]>("/api/sessions"),
   session: (id: string) => request<SessionView>(`/api/sessions/${id}`),
+  deleteSession: (id: string) => request<void>(`/api/sessions/${id}`, { method: "DELETE" }),
   createDemo: (body: DemoRequest) => post<SessionSummary>("/api/demo", body),
   createSession: (config: unknown) => post<SessionSummary>("/api/sessions", config),
   library: () => request<Library>("/api/library"),
@@ -90,3 +91,4 @@ export const api = {
 };
 
 export const eventsUrl = (id: string) => `/api/sessions/${id}/events`;
+export const exportUrl = (id: string, format: "markdown" | "json") => `/api/sessions/${id}/export?format=${format}`;

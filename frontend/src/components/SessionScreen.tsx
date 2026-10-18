@@ -1,7 +1,7 @@
 // The discussion screen: The Chamber.
 
-import { useCallback, useEffect, useState } from "react";
-import { api } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, exportUrl } from "../api";
 import { parseInput, type Action } from "../commands";
 import { InsightsView } from "../insights/InsightsView";
 import { useSession } from "../session/useSession";
@@ -129,6 +129,7 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
             </span>
           )}
           <span className="chip">{moderatorChip}</span>
+          <ExportMenu id={id} />
           <button type="button" className="button small" onClick={onLeave}>
             New discussion
           </button>
@@ -197,5 +198,37 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
         />
       </div>
     </div>
+  );
+}
+
+/** Download the discussion: a readable report, or everything as JSON. */
+function ExportMenu({ id }: { id: string }) {
+  const menu = useRef<HTMLDetailsElement>(null);
+  const close = () => menu.current?.removeAttribute("open");
+  useEffect(() => {
+    // close it when clicking anywhere else, or pressing Escape
+    const outside = (event: MouseEvent) => {
+      if (menu.current && !menu.current.contains(event.target as Node)) close();
+    };
+    const escape = (event: KeyboardEvent) => event.key === "Escape" && close();
+    document.addEventListener("click", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("click", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, []);
+  return (
+    <details className="menu" ref={menu}>
+      <summary className="button small">Export</summary>
+      <div className="menu-items" role="menu">
+        <a role="menuitem" href={exportUrl(id, "markdown")} download onClick={close}>
+          Report <small>Markdown: conclusion, polls, alliances, map, transcript</small>
+        </a>
+        <a role="menuitem" href={exportUrl(id, "json")} download onClick={close}>
+          Everything <small>JSON: the full record, to keep</small>
+        </a>
+      </div>
+    </details>
   );
 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -18,6 +19,8 @@ from moot.core.persona import ModelRef, Persona
 from moot.core.polls import Poll, PollStatus
 from moot.core.round_plan import RoundPlan, classic_debate
 from moot.core.rules import SessionRules
+
+EndReason = Literal["completed", "stopped", "error"]
 
 
 class SessionStatus(StrEnum):
@@ -165,6 +168,9 @@ class SessionState(MootModel):
     report: str | None = Field(default=None, description="the AI moderator's conclusion")
     audience_question: str | None = Field(
         default=None, description="the open question the conclusion ends with"
+    )
+    end_reason: EndReason | None = Field(
+        default=None, description="how it ended: completed, stopped (also by a restart) or error"
     )
 
     @model_validator(mode="after")

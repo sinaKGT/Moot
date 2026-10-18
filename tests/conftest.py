@@ -14,6 +14,12 @@ from moot.providers import OpenAICompatibleProvider, ProviderConfig
 Handler = Callable[[httpx.Request], httpx.Response]
 
 
+@pytest.fixture(autouse=True)
+def _private_data_dir(tmp_path_factory, monkeypatch):
+    """No test ever saves discussions in the real data folder."""
+    monkeypatch.setenv("MOOT_DATA_DIR", str(tmp_path_factory.mktemp("moot-data")))
+
+
 def _chunk(
     text: str | None = None, finish: str | None = None, usage: dict[str, int] | None = None
 ) -> dict[str, Any]:

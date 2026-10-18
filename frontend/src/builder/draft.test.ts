@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describeProblem } from "../api";
-import type { Library, Persona, Round } from "../types";
-import { draftReducer, initialDraft, MAX_OPTIONS, newRound, problems, toConfig, uniqueName, type Draft } from "./draft";
+import type { Library, Persona, Round, SessionConfig } from "../types";
+import { draftFromConfig, draftReducer, initialDraft, MAX_OPTIONS, newRound, problems, toConfig, uniqueName, type Draft } from "./draft";
 
 const persona = (name: string, color: string): Persona => ({
   id: `agt_${name}`,
@@ -142,6 +142,23 @@ describe("the team builder's draft", () => {
     expect(config.round_plan.rounds[0]).not.toHaveProperty("key");
     const decided = toConfig({ ...draft, decision: true, options: ["Berlin", "Lisbon"] });
     expect(decided.options).toEqual(["Berlin", "Lisbon"]);
+  });
+
+  it("takes an earlier discussion's setup back into the builder unchanged", () => {
+    let draft = ready();
+    draft = draftReducer(draft, { type: "set", patch: { decision: true, moderator: { kind: "human", display_name: "Sina", role: "Judge" } } });
+    draft = draftReducer(draft, { type: "addOption", option: "Lisbon" });
+    draft = draftReducer(draft, { type: "addOption", option: "Berlin" });
+    const config = toConfig(draft);
+    const back = draftFromConfig({
+      ...config,
+      agents: config.agents.map((a, i) => ({ ...a, id: `agt_${i}` })),
+      moderator: config.moderator as SessionConfig["moderator"],
+      round_plan: { rounds: config.round_plan.rounds.map((r, i) => ({ ...r, id: `rnd_${i}` })) },
+    });
+    expect(toConfig(back)).toEqual(config);
+    expect(back.decision).toBe(true);
+    expect(back.template).toBe("custom");
   });
 
   it("makes a new round with the default name and instruction", () => {

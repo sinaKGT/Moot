@@ -115,8 +115,9 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
           {streaming && <span className="caret" style={{ color }} />}
         </p>
         {entry.tokens && (
-          <div className="tokens">
+          <div className="tokens" title={entry.model ?? undefined}>
             {entry.tokens.in} in · {entry.tokens.out} out tokens
+            {entry.seconds !== null && entry.seconds >= 0.1 && ` · ${entry.seconds < 10 ? entry.seconds.toFixed(1) : Math.round(entry.seconds)} s`}
           </div>
         )}
       </article>

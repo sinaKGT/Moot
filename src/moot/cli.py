@@ -62,6 +62,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--port", type=int, default=DEFAULT_PORT, help=f"port (default {DEFAULT_PORT})"
     )
     serve.add_argument("--open", action="store_true", help="open it in your browser")
+    serve.add_argument(
+        "--data-dir",
+        type=Path,
+        help="where discussions are saved (default: MOOT_DATA_DIR, or the usual app data folder)",
+    )
 
     return parser
 
@@ -91,14 +96,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
-    from moot.server import LOCAL_HOSTS, create_app
+    from moot.server import LOCAL_HOSTS, SessionManager, create_app
+    from moot.storage import DB_NAME, SessionStore, StoreError, default_data_dir
 
     load_env_file(Path.cwd() / ".env")
+    data_dir = args.data_dir or default_data_dir()
+    try:
+        store = SessionStore(data_dir / DB_NAME)
+    except (StoreError, OSError) as exc:
+        print(f"Moot can't open its saved discussions: {exc}", file=sys.stderr)
+        return 1
     local = args.host in LOCAL_HOSTS
-    app = create_app(allowed_hosts=LOCAL_HOSTS if local else None)
+    app = create_app(SessionManager(store=store), allowed_hosts=LOCAL_HOSTS if local else None)
     shown_host = f"[{args.host}]" if ":" in args.host else args.host
     url = f"http://{shown_host}:{args.port}"
     print(f"Moot is running at {url}  (API docs: {url}/docs)")
+    print(f"Discussions are saved in {data_dir}")
     if not local:
         print(
             "Warning: anyone who can reach this address can use Moot, with your API keys. "

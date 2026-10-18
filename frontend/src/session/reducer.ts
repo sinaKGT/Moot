@@ -30,6 +30,8 @@ export interface MessageEntry {
   mentions: string[];
   tags: Tag[];
   tokens: { in: number; out: number } | null;
+  seconds: number | null;
+  model: string | null;
 }
 
 export interface NoticeEntry {
@@ -154,7 +156,17 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
     case "session_resumed":
       return { ...next, status: "running" };
     case "session_ended":
-      return { ...next, status: "finished", endReason: event.reason, speakingId: null, waitingFor: null };
+      return {
+        ...next,
+        status: "finished",
+        endReason: event.reason,
+        speakingId: null,
+        waitingFor: null,
+        // a turn cut off when the discussion ended: keep what was said, drop empty ones
+        entries: next.entries
+          .filter((e) => !(e.kind === "message" && !e.done && !e.text))
+          .map((e) => (e.kind === "message" && !e.done ? { ...e, done: true } : e)),
+      };
 
     case "round_started": {
       const active = next.activePollId ? next.polls[next.activePollId] : null;
@@ -184,6 +196,8 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         mentions: [],
         tags: event.reply_to ? ["answer"] : [],
         tokens: null,
+        seconds: null,
+        model: null,
       };
       return {
         ...next,
@@ -215,6 +229,8 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
             mentions: [],
             tags: m.reply_to ? ["answer"] : [],
             tokens: null,
+            seconds: null,
+            model: null,
           };
       let entry: MessageEntry = {
         ...base,
@@ -223,6 +239,8 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
         done: true,
         mentions: m.mentions,
         tokens: m.usage ? { in: m.usage.prompt_tokens, out: m.usage.completion_tokens } : null,
+        seconds: m.seconds ?? null,
+        model: m.model ?? null,
       };
       const asks = m.mentions.length > 0 && SEATED.includes(m.speaker_kind);
       if (asks && m.speaker_kind === "agent") entry = withTag(entry, "question");

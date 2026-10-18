@@ -197,6 +197,19 @@ describe("splitConclusion", () => {
   });
 });
 
+describe("a discussion cut off", () => {
+  it("drops an empty turn that never finished and keeps a half-written one", () => {
+    const state = play([
+      { type: "session_started", session_id: "s" },
+      { type: "turn_started", message_id: "m1", speaker_id: "ava", round_index: 0, reply_to: null, purpose: null },
+      { type: "token_delta", message_id: "m1", text: "Half a sen" },
+      { type: "turn_started", message_id: "m2", speaker_id: "ben", round_index: 0, reply_to: null, purpose: null },
+      { type: "session_ended", reason: "stopped" },
+    ]);
+    expect(messages(state).map((m) => [m.id, m.text, m.done])).toEqual([["m1", "Half a sen", true]]);
+  });
+});
+
 describe("the argument graph", () => {
   const point = (id: string, speaker: string, round: number) => ({
     id,

@@ -5,6 +5,7 @@ import { useEffect, useReducer, useState, type DragEvent, type ReactNode } from 
 import { api } from "../../api";
 import { Avatar, ModeratorMark } from "../../avatar";
 import {
+  draftFromConfig,
   draftReducer,
   initialDraft,
   loadDraft,
@@ -50,6 +51,7 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
   const [serverProblems, setServerProblems] = useState<string[]>([]);
   const [loadProblem, setLoadProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState<string | null>(null); // the discussion whose setup was taken
 
   useEffect(() => {
     api
@@ -104,6 +106,30 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
   function reset() {
     if (library) dispatch({ type: "replace", draft: { ...initialDraft(library), defaultModel: draft?.defaultModel ?? null } });
     setTried(false);
+    setLoaded(null);
+  }
+
+  async function reuse(id: string) {
+    try {
+      const view = await api.session(id);
+      dispatch({ type: "replace", draft: draftFromConfig(view.state.config) });
+      setLoaded(view.state.config.topic);
+      setTried(false);
+      window.scrollTo({ top: 0 });
+    } catch (e) {
+      setServerProblems([`Couldn't load that setup: ${(e as Error).message}`]);
+      setTried(true);
+    }
+  }
+
+  async function remove(id: string) {
+    try {
+      await api.deleteSession(id);
+      setSessions((current) => current.filter((s) => s.id !== id));
+    } catch (e) {
+      setServerProblems([`Couldn't delete it: ${(e as Error).message}`]);
+      setTried(true);
+    }
   }
 
   return (
@@ -117,6 +143,11 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
         </button>
       </Topbar>
 
+      {loaded && (
+        <p className="builder-loaded" role="status">
+          This is the setup of “{loaded}”. Change anything, then start it again.
+        </p>
+      )}
       {found.length > 0 && (
         <div className="builder-problems" role="alert">
           <b>Before starting:</b>
@@ -133,9 +164,9 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
           personas={library.personas}
           full={draft.agents.length >= MAX_AGENTS}
           onAdd={(persona) => dispatch({ type: "addAgent", persona })}
-          sessions={sessions}
-          onOpen={onOpen}
-        />
+        >
+          <History sessions={sessions} onOpen={onOpen} onReuse={reuse} onDelete={remove} />
+        </LibraryPanel>
 
         <main className="builder-main">
           <TopicPanel draft={draft} dispatch={dispatch} library={library} />
@@ -196,11 +227,10 @@ interface LibraryProps {
   personas: Persona[];
   full: boolean;
   onAdd: (persona: Partial<Persona>) => void;
-  sessions: SessionSummary[];
-  onOpen: (id: string) => void;
+  children?: ReactNode;
 }
 
-function LibraryPanel({ personas, full, onAdd, sessions, onOpen }: LibraryProps) {
+function LibraryPanel({ personas, full, onAdd, children }: LibraryProps) {
   const drag = (event: DragEvent, index: number) => {
     event.dataTransfer.setData(PERSONA_TYPE, String(index));
     event.dataTransfer.effectAllowed = "copy";
@@ -242,22 +272,79 @@ function LibraryPanel({ personas, full, onAdd, sessions, onOpen }: LibraryProps)
         {full && <p className="hint tight">The table is full ({MAX_AGENTS} agents).</p>}
       </section>
 
-      {sessions.length > 0 && (
-        <section className="panel" aria-labelledby="sessions-title">
-          <h2 className="label" id="sessions-title">
-            Discussions
-          </h2>
-          {sessions.map((s) => (
-            <button key={s.id} type="button" className="session-link" onClick={() => onOpen(s.id)}>
+      {children}
+    </aside>
+  );
+}
+
+// ---------------------------------------------------------------- earlier discussions
+
+const SHOWN = 6;
+
+export function statusLabel(s: SessionSummary): string {
+  if (s.status === "finished") return s.end_reason === "stopped" ? "stopped" : s.end_reason === "error" ? "ended by an error" : "finished";
+  return { setup: "not started", running: "live", paused: "paused" }[s.status];
+}
+
+interface HistoryProps {
+  sessions: SessionSummary[];
+  onOpen: (id: string) => void;
+  onReuse: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+function History({ sessions, onOpen, onReuse, onDelete }: HistoryProps) {
+  const [all, setAll] = useState(false);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  if (sessions.length === 0) return null;
+  const shown = all ? sessions : sessions.slice(0, SHOWN);
+  const when = (iso: string) =>
+    new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return (
+    <section className="panel" aria-labelledby="sessions-title">
+      <h2 className="label" id="sessions-title">
+        Discussions
+      </h2>
+      <p className="hint tight">Saved on this computer.</p>
+      <ul className="history">
+        {shown.map((s) => (
+          <li key={s.id}>
+            <button type="button" className="session-link" onClick={() => onOpen(s.id)}>
               {s.topic}
               <small>
-                {s.status} · {s.agents.join(", ")}
+                <span className={`state ${s.status === "running" ? "live" : ""}`}>{statusLabel(s)}</span> · {when(s.created_at)} ·{" "}
+                {s.agents.join(", ")}
               </small>
             </button>
-          ))}
-        </section>
+            {confirming === s.id ? (
+              <div className="history-actions confirm" role="group" aria-label="Delete for good?">
+                <span>Delete for good?</span>
+                <button type="button" className="link-button danger" onClick={() => onDelete(s.id)}>
+                  Delete
+                </button>
+                <button type="button" className="link-button" onClick={() => setConfirming(null)}>
+                  Keep
+                </button>
+              </div>
+            ) : (
+              <div className="history-actions">
+                <button type="button" className="link-button" onClick={() => onReuse(s.id)}>
+                  Use this setup
+                </button>
+                <button type="button" className="link-button quiet" onClick={() => setConfirming(s.id)}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {sessions.length > SHOWN && (
+        <button type="button" className="button small wide" onClick={() => setAll(!all)}>
+          {all ? "Show fewer" : `Show all ${sessions.length}`}
+        </button>
       )}
-    </aside>
+    </section>
   );
 }
 

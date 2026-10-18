@@ -308,6 +308,7 @@ def test_event_source_keeps_idle_connections_open_and_ends_with_the_discussion()
 def test_serve_command(monkeypatch, tmp_path, capsys):
     calls = []
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MOOT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.append((app, kwargs)))
     opened = []
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
@@ -315,12 +316,19 @@ def test_serve_command(monkeypatch, tmp_path, capsys):
     assert cli.main(["serve"]) == 0
     app, kwargs = calls[0]
     assert (kwargs["host"], kwargs["port"]) == ("127.0.0.1", 8765)
-    assert "Moot is running at http://127.0.0.1:8765" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "Moot is running at http://127.0.0.1:8765" in out
+    assert f"Discussions are saved in {tmp_path / 'data'}" in out
+    assert (tmp_path / "data" / "moot.db").exists()
+    assert app.state.manager.store is not None
 
-    cli.main(["serve", "--host", "0.0.0.0", "--port", "9000"])
+    cli.main(["serve", "--host", "0.0.0.0", "--port", "9000", "--data-dir", str(tmp_path / "x")])
     assert calls[1][1]["port"] == 9000
     assert "Warning: anyone who can reach this address" in capsys.readouterr().out
+    assert (tmp_path / "x" / "moot.db").exists()
     assert opened == []
+    for app, _ in calls:
+        app.state.manager.store.close()
 
 
 # ------------------------------------------------------------------ the app

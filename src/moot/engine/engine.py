@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from collections import deque
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -108,6 +109,7 @@ class _Spoken:
     text: str
     captured: dict[str, str]
     usage: Usage | None
+    seconds: float = 0.0
 
 
 def _token_usage(usage: Usage | None) -> TokenUsage | None:
@@ -335,6 +337,7 @@ class DiscussionEngine:
             if reason == "completed" and self._moderator:
                 await self._final_report()
             self.state.status = SessionStatus.FINISHED
+            self.state.end_reason = reason  # type: ignore[assignment]
             self.events.emit(SessionEnded(reason=reason))  # type: ignore[arg-type]
             self.events.close()
             if self._owns_providers:
@@ -784,6 +787,8 @@ class DiscussionEngine:
             mentions=find_mentions(text, config.agents, exclude=agent.id),
             reply_to=reply_to.id if reply_to else None,
             usage=_token_usage(spoken.usage),
+            model=f"{model.provider}/{model.model}",
+            seconds=spoken.seconds,
         )
         self.state.messages.append(message)
         self._last_speaker = agent.id
@@ -805,6 +810,7 @@ class DiscussionEngine:
         spaces = TrailingSpaceHolder()
         parts: list[str] = []
         usage: Usage | None = None
+        started = time.monotonic()
 
         def show(text: str) -> None:
             visible = spaces.feed(stripper.feed(tags.feed(text)))
@@ -823,7 +829,12 @@ class DiscussionEngine:
                 parts.append(visible)
                 self.events.emit(TokenDelta(message_id=message_id, text=visible))
         spaces.flush()
-        return _Spoken(text="".join(parts).strip(), captured=tags.captured, usage=usage)
+        return _Spoken(
+            text="".join(parts).strip(),
+            captured=tags.captured,
+            usage=usage,
+            seconds=round(time.monotonic() - started, 2),
+        )
 
     def _check_rules(
         self, agent: Persona, current: Round, message: ChatMessage, index: int
@@ -929,6 +940,8 @@ class DiscussionEngine:
             text=spoken.text,
             round_index=round_index,
             usage=_token_usage(spoken.usage),
+            model=f"{model.provider}/{model.model}",
+            seconds=spoken.seconds,
         )
         self.state.messages.append(message)
         self.events.emit(TurnCompleted(message=message))

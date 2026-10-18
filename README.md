@@ -63,6 +63,11 @@ polls appear over the table, and the moderator closes with a conclusion. Type to
 asks an agent (autocomplete included), `/` gives commands. When you moderate, Moot tells you
 whose move it is.
 
+Discussions are saved on this computer as they run (in `%LOCALAPPDATA%\Moot\moot.db` on
+Windows; set `MOOT_DATA_DIR` in `.env` to keep them elsewhere). The team builder lists them:
+open one, take its setup to run it again, or delete it. Export a discussion from its screen as
+a readable report (Markdown) or as everything (JSON).
+
 Switch to "Map & alliances" to see the argument map (every point by speaker and round, and
 how points support, challenge or answer each other) and who backs whom, live; the round slider
 shows both as they were after any round.

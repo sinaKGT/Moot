@@ -1,7 +1,7 @@
 // The team builder's draft: everything chosen before a discussion starts, as it is edited.
 // Pure functions, so they can be tested without a browser.
 
-import type { Library, ModelRef, Persona, Round, RoundType, SessionRules, SpeakingOrder, Traits } from "../types";
+import type { Library, ModelRef, Persona, Round, RoundType, SessionConfig, SessionRules, SpeakingOrder, Traits } from "../types";
 
 export const AGENT_COLORS = ["#60a5fa", "#fb7185", "#a3e635", "#f472b6", "#facc15", "#38bdf8", "#d6b98c"];
 export const MAX_AGENTS = 12;
@@ -127,6 +127,30 @@ export function initialDraft(library: Library): Draft {
     rules: { ...library.example.rules },
     rounds: fromRounds(library.example.round_plan.rounds),
     allowAlliances: true,
+  };
+}
+
+/** An earlier discussion's setup, to run again or change. */
+export function draftFromConfig(config: SessionConfig): Draft {
+  const agents: DraftAgent[] = [];
+  for (const persona of config.agents) agents.push(fromPersona(persona, agents, true));
+  return {
+    version: DRAFT_VERSION,
+    topic: config.topic,
+    background: config.background,
+    template: "custom",
+    decision: config.options.length > 0,
+    options: [...config.options],
+    agents,
+    selected: agents[0]?.key ?? null,
+    moderator:
+      config.moderator.kind === "human"
+        ? { kind: "human", display_name: config.moderator.display_name, role: config.moderator.role }
+        : { kind: "ai" },
+    defaultModel: config.default_model,
+    rules: { ...config.rules, presets: [...config.rules.presets], custom: [...config.rules.custom] },
+    rounds: fromRounds(config.round_plan.rounds),
+    allowAlliances: config.allow_alliances,
   };
 }
 
