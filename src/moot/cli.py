@@ -5,11 +5,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
+import threading
+import webbrowser
 from collections.abc import Sequence
+from pathlib import Path
 
 from moot import __version__
 from moot.core import ModelRef, SessionState
 from moot.demo import DEFAULT_OPENROUTER_MODEL, DEMO_TOPIC, demo_config, run_in_console
+from moot.envfile import load_env_file
 from moot.providers import (
     PRESETS,
     ChatRequest,
@@ -19,6 +23,9 @@ from moot.providers import (
     Usage,
     create_provider,
 )
+
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8765
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     debate.add_argument("--model", help="model id (OpenRouter defaults to a free model)")
     debate.add_argument("--no-color", action="store_true", help="plain text output")
 
+    serve = commands.add_parser("serve", help="start the Moot server on this computer")
+    serve.add_argument("--host", default=DEFAULT_HOST, help=f"address (default {DEFAULT_HOST})")
+    serve.add_argument(
+        "--port", type=int, default=DEFAULT_PORT, help=f"port (default {DEFAULT_PORT})"
+    )
+    serve.add_argument("--open", action="store_true", help="open it in your browser")
+
     return parser
 
 
@@ -67,8 +81,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_cmd_ask(args))
     if args.command == "debate":
         return _cmd_debate(args)
+    if args.command == "serve":
+        return _cmd_serve(args)
 
-    print(f"Moot {__version__}: the discussion engine is not built yet. Try `moot --help`.")
+    print(f"Moot {__version__}. Start it with `moot serve --open`, or see `moot --help`.")
+    return 0
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    from moot.server import LOCAL_HOSTS, create_app
+
+    load_env_file(Path.cwd() / ".env")
+    local = args.host in LOCAL_HOSTS
+    app = create_app(allowed_hosts=LOCAL_HOSTS if local else None)
+    shown_host = f"[{args.host}]" if ":" in args.host else args.host
+    url = f"http://{shown_host}:{args.port}"
+    print(f"Moot is running at {url}  (API docs: {url}/docs)")
+    if not local:
+        print(
+            "Warning: anyone who can reach this address can use Moot, with your API keys. "
+            "Use the default address unless you mean to share it."
+        )
+    print("Press Ctrl+C to stop.")
+    if args.open:
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 
 

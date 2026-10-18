@@ -41,15 +41,16 @@ class EventStream:
         for queue in self._queues:
             queue.put_nowait(_CLOSED)
 
-    async def subscribe(self, *, replay: bool = True) -> AsyncIterator[Event]:
+    async def subscribe(self, *, replay: bool = True, after: int = 0) -> AsyncIterator[Event]:
         """Yield events as they happen until the stream closes.
 
         With `replay`, events emitted before subscribing are delivered first, so a
-        subscriber never misses the start of a discussion.
+        subscriber never misses the start of a discussion. `after` skips the events up to
+        that sequence number, for a viewer that reconnects.
         """
         queue: asyncio.Queue[object] = asyncio.Queue()
         if replay:
-            for event in self._history:
+            for event in self._history[max(after, 0) :]:
                 queue.put_nowait(event)
         if self._closed:
             queue.put_nowait(_CLOSED)

@@ -92,7 +92,8 @@ class ModeratorBrain:
             "You are neutral: never take a side or give your own opinion on the topic. "
             "Be brief, clear and fair, and address participants by name. Do not start your "
             "reply with your own name.\n\n"
-            f"Rules the participants follow:\n{rules}"
+            "Rules the participants follow (they are for the participants, not for you; you "
+            f"never answer the topic question yourself):\n{rules}"
         )
 
     # ----------------------------------------------------------------- opening

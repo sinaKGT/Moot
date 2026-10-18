@@ -281,7 +281,7 @@ class DiscussionEngine:
     async def run(self) -> SessionState:
         if self.state.status is not SessionStatus.SETUP:
             raise RuntimeError("this session has already been run")
-        self._check_providers()
+        self.check_providers()
 
         self.state.status = SessionStatus.RUNNING
         self.events.emit(SessionStarted(session_id=self.state.id))
@@ -337,8 +337,8 @@ class DiscussionEngine:
                 await self._providers.aclose()
         return self.state
 
-    def _check_providers(self) -> None:
-        """Fail before the discussion starts if any model's provider is unknown."""
+    def check_providers(self) -> None:
+        """Raise ValueError if any model's provider is unknown (also done by `run()`)."""
         config = self.state.config
         for agent in config.agents:
             self._providers.get(config.model_for(agent))

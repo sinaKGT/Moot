@@ -47,6 +47,16 @@ someone the floor in the challenge round (`/floor` alone lets Moot choose), `/en
 round, `/remind Ben keep it short` reminds an agent, and `/finish` ends the discussion.
 `@all` asks every agent at once. There is no AI moderator help in this mode.
 
+## Run the server
+
+Double-click `serve.bat` (or run `uv run moot serve --open`). Moot starts on this computer at
+http://127.0.0.1:8765 and opens a temporary test page in your browser: start a demo
+discussion, watch it live, talk to the agents and steer it. The full API is documented at
+http://127.0.0.1:8765/docs. Close the window (or press Ctrl+C) to stop it.
+
+The server only answers this computer and refuses requests from other websites, since it has
+no login and uses your API keys.
+
 ## Project layout
 
 ```
