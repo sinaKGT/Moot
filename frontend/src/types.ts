@@ -68,6 +68,17 @@ export interface SessionConfig {
   allow_alliances: boolean;
 }
 
+/** What the Team Designer proposes (POST /api/designer). */
+export interface TeamProposal {
+  topic: string;
+  format: string;
+  options: string[];
+  agents: Persona[];
+  rationale: string;
+  balance_notes: string[];
+  revised: boolean;
+}
+
 export interface Library {
   personas: Persona[];
   templates: Record<string, { name: string; plan: { rounds: Round[] } }>;

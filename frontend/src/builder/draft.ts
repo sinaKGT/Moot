@@ -1,7 +1,7 @@
 // The team builder's draft: everything chosen before a discussion starts, as it is edited.
 // Pure functions, so they can be tested without a browser.
 
-import type { Library, ModelRef, Persona, Round, RoundType, SessionConfig, SessionRules, SpeakingOrder, Traits } from "../types";
+import type { Library, ModelRef, Persona, Round, RoundType, SessionConfig, SessionRules, SpeakingOrder, TeamProposal, Traits } from "../types";
 
 export const AGENT_COLORS = ["#60a5fa", "#fb7185", "#a3e635", "#f472b6", "#facc15", "#38bdf8", "#d6b98c"];
 export const MAX_AGENTS = 12;
@@ -151,6 +151,25 @@ export function draftFromConfig(config: SessionConfig): Draft {
     rules: { ...config.rules, presets: [...config.rules.presets], custom: [...config.rules.custom] },
     rounds: fromRounds(config.round_plan.rounds),
     allowAlliances: config.allow_alliances,
+  };
+}
+
+/** The Team Designer's proposal in the draft: its topic, panel, format and options. The
+ * moderator, model, rules and background stay as they were. */
+export function applyProposal(draft: Draft, proposal: TeamProposal, library: Library): Draft {
+  const agents: DraftAgent[] = [];
+  for (const persona of proposal.agents.slice(0, MAX_AGENTS)) agents.push(fromPersona(persona, agents));
+  const plan = library.templates[proposal.format]?.plan;
+  const options = proposal.options.slice(0, MAX_OPTIONS);
+  return {
+    ...draft,
+    topic: proposal.topic,
+    agents,
+    selected: agents[0]?.key ?? null,
+    template: plan ? proposal.format : draft.template,
+    rounds: plan ? fromRounds(plan.rounds) : draft.rounds,
+    decision: options.length >= 2,
+    options: options.length >= 2 ? options : [],
   };
 }
 

@@ -38,6 +38,16 @@ from moot.core import (
     winner_poll_spec,
 )
 from moot.demo import DEMO_TOPIC, demo_config
+from moot.engine.designer import (
+    MAX_AGENTS as DESIGN_MAX_AGENTS,
+)
+from moot.engine.designer import (
+    MAX_GOAL_CHARS,
+    MIN_AGENTS,
+    DesignError,
+    TeamDesigner,
+    TeamProposal,
+)
 from moot.memory import AllianceMonitor, alliance_monitor, argument_map
 from moot.providers import PRESETS, ProviderError
 from moot.server.security import LOCAL_HOSTS, LocalOnly
@@ -192,6 +202,18 @@ def summarize_saved(listing: SessionListing) -> SessionSummary:
     )
 
 
+class DesignRequest(BaseModel):
+    goal: str = Field(min_length=1, max_length=MAX_GOAL_CHARS, description="what the panel is for")
+    provider: str = Field(min_length=1, description="provider preset id")
+    model: str = Field(min_length=1)
+    agents: int | None = Field(
+        default=None, ge=MIN_AGENTS, le=DESIGN_MAX_AGENTS, description="None: as the goal needs"
+    )
+    balance_check: bool = Field(
+        default=True, description="a second pass checking the views are distinct and fair"
+    )
+
+
 def manager_of(request: Request) -> SessionManager:
     return request.app.state.manager
 
@@ -310,6 +332,24 @@ def create_app(
         finally:
             await provider.aclose()
         return [ModelEntry(**asdict(model)) for model in found]
+
+    @app.post("/api/designer", tags=["general"])
+    async def design_team(body: DesignRequest, manager: Manager) -> TeamProposal:
+        """The Team Designer: a panel, a format and (for decisions) options from a goal."""
+        with engine_errors():
+            provider = manager.provider(body.provider)
+        try:
+            return await TeamDesigner().design(
+                body.goal,
+                provider,
+                body.model,
+                agents=body.agents,
+                balance_check=body.balance_check,
+            )
+        except (DesignError, ProviderError) as exc:
+            raise HTTPException(502, str(exc)) from None
+        finally:
+            await provider.aclose()
 
     @app.get("/api/library", tags=["general"])
     async def library() -> Library:

@@ -5,6 +5,7 @@ import { useEffect, useReducer, useState, type DragEvent, type ReactNode } from 
 import { api } from "../../api";
 import { Avatar, ModeratorMark } from "../../avatar";
 import {
+  applyProposal,
   draftFromConfig,
   draftReducer,
   initialDraft,
@@ -17,11 +18,12 @@ import {
   type Draft,
   type DraftAction,
 } from "../../builder/draft";
-import type { Library, Persona, ProviderInfo, SessionSummary } from "../../types";
+import type { Library, Persona, ProviderInfo, SessionSummary, TeamProposal } from "../../types";
 import { seatPositions } from "../Arena";
 import { AgentCard } from "./AgentCard";
 import { ModelPicker } from "./ModelPicker";
 import { RoundPlanEditor } from "./RoundPlanEditor";
+import { TeamDesigner } from "./TeamDesigner";
 
 const PERSONA_TYPE = "application/x-moot-persona";
 const TABLE = 520;
@@ -52,6 +54,9 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
   const [loadProblem, setLoadProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState<string | null>(null); // the discussion whose setup was taken
+  const [designing, setDesigning] = useState(false);
+  // the designer's panel just taken in: what it said, and the draft before it (to undo)
+  const [designed, setDesigned] = useState<{ proposal: TeamProposal; before: Draft } | null>(null);
 
   useEffect(() => {
     api
@@ -107,6 +112,17 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
     if (library) dispatch({ type: "replace", draft: { ...initialDraft(library), defaultModel: draft?.defaultModel ?? null } });
     setTried(false);
     setLoaded(null);
+    setDesigned(null);
+  }
+
+  function takeProposal(proposal: TeamProposal) {
+    if (!draft || !library) return;
+    dispatch({ type: "replace", draft: applyProposal(draft, proposal, library) });
+    setDesigned({ proposal, before: draft });
+    setDesigning(false);
+    setLoaded(null);
+    setTried(false);
+    window.scrollTo({ top: 0 });
   }
 
   async function reuse(id: string) {
@@ -114,6 +130,7 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
       const view = await api.session(id);
       dispatch({ type: "replace", draft: draftFromConfig(view.state.config) });
       setLoaded(view.state.config.topic);
+      setDesigned(null);
       setTried(false);
       window.scrollTo({ top: 0 });
     } catch (e) {
@@ -135,6 +152,9 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <div className="screen">
       <Topbar>
+        <button type="button" className="button accent" onClick={() => setDesigning(true)}>
+          Team Designer
+        </button>
         <button type="button" className="button" onClick={reset}>
           Start over
         </button>
@@ -148,6 +168,36 @@ export function TeamBuilder({ onOpen }: { onOpen: (id: string) => void }) {
           This is the setup of “{loaded}”. Change anything, then start it again.
         </p>
       )}
+      {designed && (
+        <div className="builder-loaded designed" role="status">
+          <p>
+            <b>The designer's panel is in.</b> Review each card (press a seat to open it), change anything, then start.
+            {designed.proposal.rationale && ` ${designed.proposal.rationale}`}
+          </p>
+          {designed.proposal.balance_notes.length > 0 && (
+            <p className="balance-line">
+              {designed.proposal.revised ? "Balance check (revised the panel): " : "Balance check: "}
+              {designed.proposal.balance_notes.join(" ")}
+            </p>
+          )}
+          <div className="designed-actions">
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => {
+                dispatch({ type: "replace", draft: designed.before });
+                setDesigned(null);
+              }}
+            >
+              Undo
+            </button>
+            <button type="button" className="link-button quiet" onClick={() => setDesigned(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+      {designing && <TeamDesigner library={library} model={draft.defaultModel} onUse={takeProposal} onClose={() => setDesigning(false)} />}
       {found.length > 0 && (
         <div className="builder-problems" role="alert">
           <b>Before starting:</b>

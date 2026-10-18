@@ -54,7 +54,10 @@ http://127.0.0.1:8765 and opens in your browser.
 
 Set up the discussion in the team builder: write the topic, seat agents from the library (or
 make your own), edit each one on its card, choose the model, who moderates, the rules and the
-round plan. To make a decision, tick "This is a decision between options", list the options
+round plan. Or press "Team Designer", describe your goal ("four different views on
+immigration", "choose between Lisbon, Berlin or staying remote") and let it propose the panel,
+the format and the options; a second pass checks the views are distinct and fair. Review the
+cards, change anything, then start. To make a decision, tick "This is a decision between options", list the options
 and use the Decision format: the vote asks which option to choose and the conclusion gives the
 decision, why, the risks, when to revisit it and the next steps.
 

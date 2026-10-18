@@ -1,6 +1,22 @@
 // Talking to the Moot server.
 
-import type { AllianceMonitor, Library, ModelEntry, ProviderInfo, SessionSummary, SessionView } from "./types";
+import type {
+  AllianceMonitor,
+  Library,
+  ModelEntry,
+  ProviderInfo,
+  SessionSummary,
+  SessionView,
+  TeamProposal,
+} from "./types";
+
+export interface DesignRequest {
+  goal: string;
+  provider: string;
+  model: string;
+  agents: number | null;
+  balance_check: boolean;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -78,6 +94,7 @@ export const api = {
   createDemo: (body: DemoRequest) => post<SessionSummary>("/api/demo", body),
   createSession: (config: unknown) => post<SessionSummary>("/api/sessions", config),
   library: () => request<Library>("/api/library"),
+  design: (body: DesignRequest) => post<TeamProposal>("/api/designer", body),
   alliances: (id: string, upToRound: number | null) =>
     request<AllianceMonitor>(`/api/sessions/${id}/alliances${upToRound === null ? "" : `?up_to_round=${upToRound}`}`),
   control: (id: string, control: Control) => post<SessionSummary>(`/api/sessions/${id}/${control}`),

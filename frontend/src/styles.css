@@ -305,6 +305,33 @@ fieldset.panel legend.label + * { clear: both; }
 .menu-items a:hover, .menu-items a:focus-visible { background: rgba(45, 212, 191, 0.12); }
 .menu-items small { display: block; margin-top: 2px; font-size: 12px; color: var(--dim); }
 
+/* ---------------------------------------------------------------- team designer */
+.overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px; overflow-y: auto; background: rgba(3, 6, 12, 0.72); backdrop-filter: blur(3px); }
+.dialog { width: min(720px, 100%); padding: 20px 22px; background: #0b1220; border-color: var(--line-strong); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.dialog-head h2 { margin: 0; font-size: 20px; font-weight: 600; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.center-text { text-align: center; margin-top: 10px; }
+.examples { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 4px; }
+.example { min-height: 32px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: #cbd5e1; font-size: 12.5px; text-align: left; }
+.example:hover { border-color: var(--teal); color: var(--text); }
+.proposal-topic { padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(45, 212, 191, 0.45); background: rgba(45, 212, 191, 0.07); margin-bottom: 12px; }
+.proposal-topic p { margin: 4px 0 0; font-size: 17px; font-weight: 500; }
+.kicker { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--teal-soft); }
+.proposal-agents { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.proposal-agents li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; background: var(--panel-solid); border: 1px solid var(--line); }
+.proposal-agents li > svg { flex: none; margin-top: 2px; }
+.proposal-agents b { font-size: 14px; }
+.proposal-agents .role { font-size: 13px; color: var(--dim); }
+.proposal-agents p { margin: 3px 0 0; font-size: 13.5px; line-height: 1.45; color: #cbd5e1; }
+.balance { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line-strong); }
+.balance.revised { border-color: rgba(167, 139, 250, 0.5); }
+.balance.revised .kicker { color: var(--violet-soft); }
+.balance ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; color: #cbd5e1; }
+.builder-loaded.designed p { margin: 0; }
+.builder-loaded .balance-line { margin-top: 6px !important; color: #cbd5e1; font-size: 13px; }
+.designed-actions { display: flex; gap: 16px; margin-top: 8px; font-size: 13px; }
+
 /* ---------------------------------------------------------------- views and insights */
 .views { display: flex; padding: 3px; gap: 2px; border-radius: 999px; border: 1px solid var(--line-strong); font-family: var(--sans); }
 .views button { min-height: 32px; padding: 0 14px; border-radius: 999px; border: 0; background: transparent; color: var(--dim); font-size: 13px; letter-spacing: 0.02em; }

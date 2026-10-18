@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { describeProblem } from "../api";
 import type { Library, Persona, Round, SessionConfig } from "../types";
-import { draftFromConfig, draftReducer, initialDraft, MAX_OPTIONS, newRound, problems, toConfig, uniqueName, type Draft } from "./draft";
+import { applyProposal, draftFromConfig, draftReducer, initialDraft, MAX_OPTIONS, newRound, problems, toConfig, uniqueName, type Draft } from "./draft";
 
 const persona = (name: string, color: string): Persona => ({
   id: `agt_${name}`,
@@ -168,6 +168,39 @@ describe("the team builder's draft", () => {
       blind: false,
     });
     expect(newRound("opening").blind).toBe(true);
+  });
+});
+
+describe("the Team Designer's proposal", () => {
+  it("replaces the topic, panel, format and options, and keeps the rest", () => {
+    const before: Draft = { ...ready(), background: "Budget: 2m", moderator: { kind: "human", display_name: "Sina", role: "Judge" } };
+    const proposal = {
+      topic: "Which city for our next office?",
+      format: "decision",
+      options: ["Lisbon", "Berlin"],
+      agents: [persona("Ines", "#000000"), persona("Jonas", "#000000"), persona("Mira", "#000000")],
+      rationale: "Each option has a champion.",
+      balance_notes: [],
+      revised: false,
+    };
+    const after = applyProposal(before, proposal, library);
+    expect(after.topic).toBe("Which city for our next office?");
+    expect(after.agents.map((a) => [a.name, a.color])).toEqual([
+      ["Ines", "#60a5fa"],
+      ["Jonas", "#fb7185"],
+      ["Mira", "#a3e635"],
+    ]);
+    expect(after.selected).toBe(after.agents[0].key);
+    expect(after.template).toBe("decision");
+    expect(after.rounds.map((r) => r.name)).toEqual(["Options", "Decide"]);
+    expect([after.decision, after.options]).toEqual([true, ["Lisbon", "Berlin"]]);
+    expect(after.background).toBe("Budget: 2m");
+    expect(after.moderator).toEqual(before.moderator);
+    expect(after.defaultModel).toEqual(before.defaultModel);
+    expect(problems(after)).toEqual([]);
+
+    const debate = applyProposal(after, { ...proposal, format: "unknown", options: [] }, library);
+    expect([debate.template, debate.decision, debate.options]).toEqual(["decision", false, []]); // keeps the plan it had
   });
 });
 
