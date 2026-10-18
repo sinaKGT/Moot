@@ -310,25 +310,67 @@ def test_serve_command(monkeypatch, tmp_path, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("MOOT_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: calls.append((app, kwargs)))
+    monkeypatch.setattr(cli, "_already_running", lambda host, port: None)
     opened = []
     monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+
+    class Now:  # open the browser at once instead of after a second
+        def __init__(self, delay, fn, args=()):
+            self.fn, self.args = fn, args
+
+        def start(self):
+            self.fn(*self.args)
+
+    monkeypatch.setattr(cli.threading, "Timer", Now)
 
     assert cli.main(["serve"]) == 0
     app, kwargs = calls[0]
     assert (kwargs["host"], kwargs["port"]) == ("127.0.0.1", 8765)
     out = capsys.readouterr().out
-    assert "Moot is running at http://127.0.0.1:8765" in out
+    assert "is running at http://127.0.0.1:8765" in out
     assert f"Discussions are saved in {tmp_path / 'data'}" in out
     assert (tmp_path / "data" / "moot.db").exists()
     assert app.state.manager.store is not None
+    assert opened == []
 
     cli.main(["serve", "--host", "0.0.0.0", "--port", "9000", "--data-dir", str(tmp_path / "x")])
     assert calls[1][1]["port"] == 9000
     assert "Warning: anyone who can reach this address" in capsys.readouterr().out
     assert (tmp_path / "x" / "moot.db").exists()
-    assert opened == []
+
+    assert cli.main([]) == 0  # plain `moot` starts it and opens the browser
+    assert calls[2][1]["port"] == 8765 and opened == ["http://127.0.0.1:8765"]
     for app, _ in calls:
         app.state.manager.store.close()
+
+
+def test_a_second_start_opens_the_running_moot(monkeypatch, capsys):
+    opened, started = [], []
+    monkeypatch.setattr(cli.webbrowser, "open", opened.append)
+    monkeypatch.setattr("uvicorn.run", lambda app, **kwargs: started.append(app))
+    monkeypatch.setattr(cli, "_already_running", lambda host, port: True)
+    assert cli.main([]) == 0
+    assert "already running at http://127.0.0.1:8765" in capsys.readouterr().out
+    assert opened == ["http://127.0.0.1:8765"] and started == []
+
+    monkeypatch.setattr(cli, "_already_running", lambda host, port: False)
+    assert cli.main(["serve"]) == 1
+    assert "--port 8766" in capsys.readouterr().err and started == []
+
+
+def test_settings_are_read_from_the_folder_and_the_data_folder(monkeypatch, tmp_path):
+    work, data = tmp_path / "work", tmp_path / "data"
+    work.mkdir()
+    data.mkdir()
+    (work / ".env").write_text("MOOT_TEST_A=from-folder\n")
+    (data / ".env").write_text("MOOT_TEST_A=from-data\nMOOT_TEST_B=from-data\n")
+    monkeypatch.chdir(work)
+    monkeypatch.delenv("MOOT_TEST_A", raising=False)
+    monkeypatch.delenv("MOOT_TEST_B", raising=False)
+    assert cli.load_settings(data) == [work / ".env", data / ".env"]
+    import os
+
+    assert (os.environ["MOOT_TEST_A"], os.environ["MOOT_TEST_B"]) == ("from-folder", "from-data")
 
 
 # ------------------------------------------------------------------ the app

@@ -13,6 +13,10 @@ def test_cli_version(capsys) -> None:
     assert capsys.readouterr().out.strip() == "moot 0.1.0"
 
 
-def test_cli_default_runs(capsys) -> None:
+def test_cli_default_starts_the_server(monkeypatch) -> None:
+    from moot import cli
+
+    started = []
+    monkeypatch.setattr(cli, "_cmd_serve", lambda args: started.append(args) or 0)
     assert main([]) == 0
-    assert "Moot 0.1.0" in capsys.readouterr().out
+    assert started[0].command == "serve" and started[0].open

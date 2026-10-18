@@ -71,6 +71,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def load_settings(data_dir: Path | None = None) -> list[Path]:
+    """Read `.env` from the current folder, then from Moot's data folder (where an installed
+    Moot keeps its settings). Variables already set win; returns the files read."""
+    from moot.storage import default_data_dir
+
+    read = []
+    for path in (Path.cwd() / ".env", (data_dir or default_data_dir()) / ".env"):
+        if path.exists() and path not in read:
+            load_env_file(path)
+            read.append(path)
+    return read
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     _tolerate_unprintable_characters()
     args = build_parser().parse_args(argv)
@@ -78,6 +91,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.version:
         print(f"moot {__version__}")
         return 0
+    if args.command is None:  # plain `moot`: start it and open it
+        args = build_parser().parse_args(["serve", "--open"])
+    load_settings(getattr(args, "data_dir", None))
     if args.command == "providers":
         return _cmd_providers()
     if args.command == "models":
@@ -86,11 +102,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return asyncio.run(_cmd_ask(args))
     if args.command == "debate":
         return _cmd_debate(args)
-    if args.command == "serve":
-        return _cmd_serve(args)
-
-    print(f"Moot {__version__}. Start it with `moot serve --open`, or see `moot --help`.")
-    return 0
+    return _cmd_serve(args)
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
@@ -101,8 +113,22 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     from moot.storage import DB_NAME, SessionStore, StoreError, default_data_dir
     from moot.tools import MCP_FILE, McpHub, ToolBox
 
-    load_env_file(Path.cwd() / ".env")
     data_dir = args.data_dir or default_data_dir()
+    shown_host = f"[{args.host}]" if ":" in args.host else args.host
+    url = f"http://{shown_host}:{args.port}"
+    running = _already_running(args.host, args.port)
+    if running is not None:
+        if running:
+            print(f"Moot is already running at {url}.")
+            if args.open:
+                webbrowser.open(url)
+            return 0
+        print(
+            f"Port {args.port} is used by another program. Start Moot on another port, "
+            f"e.g. `moot serve --open --port {args.port + 1}`.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         store = SessionStore(data_dir / DB_NAME)
         knowledge = KnowledgeStore(data_dir / KNOWLEDGE_DB)
@@ -113,9 +139,7 @@ def _cmd_serve(args: argparse.Namespace) -> int:
     tools = ToolBox(McpHub(data_dir / MCP_FILE))
     manager = SessionManager(store=store, knowledge=knowledge, tools=tools)
     app = create_app(manager, allowed_hosts=LOCAL_HOSTS if local else None)
-    shown_host = f"[{args.host}]" if ":" in args.host else args.host
-    url = f"http://{shown_host}:{args.port}"
-    print(f"Moot is running at {url}  (API docs: {url}/docs)")
+    print(f"Moot {__version__} is running at {url}  (API docs: {url}/docs)")
     print(f"Discussions are saved in {data_dir}")
     if not local:
         print(
@@ -127,6 +151,30 @@ def _cmd_serve(args: argparse.Namespace) -> int:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
+
+
+def _already_running(host: str, port: int) -> bool | None:
+    """None if the port is free; True if a Moot answers there; False if something else does."""
+    import socket
+
+    import httpx
+
+    probe = "127.0.0.1" if host in ("0.0.0.0", "", "localhost") else host
+    try:
+        with socket.create_connection((probe, port), timeout=0.5):
+            pass
+    except OSError:
+        return None
+    shown = f"[{probe}]" if ":" in probe else probe
+    try:
+        answer = httpx.get(f"http://{shown}:{port}/api/health", timeout=2.0)
+        return (
+            answer.status_code == 200
+            and answer.json().get("status") == "ok"
+            and "version" in answer.json()
+        )
+    except (httpx.HTTPError, ValueError):
+        return False
 
 
 def _cmd_providers() -> int:

@@ -2,111 +2,138 @@
 
 A local-first platform where a team of AI agents discusses a topic under a moderator.
 Build the team, give each agent its own persona, model, knowledge and tools, define the
-rounds and rules, then let an AI moderator run the discussion or moderate it yourself.
+rounds and rules, then let an AI moderator run the discussion, or moderate it yourself.
+Everything runs on your computer; models come from your own keys or local servers.
 
-**Status:** pre-alpha, under construction. See [docs/v1-features.md](docs/v1-features.md)
-for the v1 spec and build order.
+**Status:** v1 feature-complete (all 21 steps of [docs/v1-features.md](docs/v1-features.md),
+where every decision is logged).
 
-## Development setup
+## Install
 
-Requires [uv](https://docs.astral.sh/uv/). Everything installs into the project's own
-`.venv`; nothing is installed globally.
+Moot needs [uv](https://docs.astral.sh/uv/). It installs Moot in its own isolated
+environment; nothing else on your computer changes.
 
-```powershell
-uv sync                  # create .venv and install dev tools
-uv run moot --version    # check the command works
-uv run pytest            # run the tests
-uv run ruff check .      # lint
+- **Double-click `install-moot.bat`.** It installs Moot from this folder and starts it.
+- Or in a terminal: `uv tool install "D:\10. AgentSwarm"`
+
+Then start Moot any time by typing **`moot`**: it opens in your browser at
+http://127.0.0.1:8765. If `moot` isn't found, run `uv tool update-shell` once and open a new
+terminal. Starting it again while it runs simply opens the running one.
+
+- **Update** after changes to this folder: double-click `install-moot.bat` again (or
+  `uv tool install --reinstall "D:\10. AgentSwarm"`).
+- **Uninstall:** `uv tool uninstall moot`. Your discussions and knowledge stay in the data
+  folder (below) until you delete it.
+- **Without installing**, from this folder: double-click `serve.bat` (`uv run moot serve --open`).
+
+## Settings and keys
+
+Moot reads `.env` files: first from the folder you start it in, then from its data folder
+(`%LOCALAPPDATA%\Moot\.env` on Windows, `~/.local/share/moot/.env` on Linux,
+`~/Library/Application Support/Moot/.env` on macOS). See `.env.example`.
+
+| Setting | For |
+|---|---|
+| `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY` | cloud models (local LM Studio and Ollama need no key) |
+| `TAVILY_API_KEY` (1,000 free searches a month), `BRAVE_API_KEY` or `SEARXNG_URL` | the "Search the web" tool |
+| `MOOT_DATA_DIR` | keep Moot's data somewhere else |
+
+The data folder holds `moot.db` (saved discussions), `knowledge.db` (agents' files and their
+knowledge graphs) and `mcp.json` (MCP servers). Keys are never shown by the app or its API.
+
+## Using Moot
+
+**Set up a discussion** in the team builder: write the topic, seat agents from the library
+(drag or press) or make your own, and edit each one on its card: name, colour, role,
+viewpoint, motivation, expertise, thinking style, how persuadable, detailed and open to
+alliances it is, optionally its own model or whole prompt. Choose the discussion's model, who
+moderates (the AI, or you with your own name and role), the rules and the round plan
+(templates, or your own rounds). Your last setup is remembered.
+
+**Team Designer:** describe your goal ("four different views on immigration", "choose between
+Lisbon, Berlin or staying remote") and it proposes the panel, the format and the options; a
+second pass checks the views are distinct and fair. Review the cards, change anything, start.
+
+**Decisions:** tick "This is a decision between options", list the options and use the
+Decision format (options, criteria, weigh, pre-mortem, decide). The vote asks which option to
+choose, and the conclusion gives the decision, why, the risks, when to revisit it and the
+next steps.
+
+**Watch and join in:** the speaker glows at the round table, beams show challenges, support
+and questions, polls appear over the table, and the moderator closes with a conclusion and a
+question for the audience. Type to join in: `@Name` asks an agent (autocomplete included),
+`/` gives commands (`/poll`, `/pause`, `/resume`, and when you moderate `/next`, `/floor`,
+`/end`, `/remind`, `/finish`). When you moderate, Moot tells you whose move it is.
+
+**Map & alliances:** the argument map shows every point by speaker and round and how points
+support, challenge or answer each other; the alliance monitor shows who backs whom and each
+alliance's story. Both update live, and a slider shows them as they were after any round.
+
+**Knowledge:** drop PDF, Word, text or Markdown files on an agent's card. Moot turns them into
+that agent's own knowledge graph (the entities and facts in them, with an embedding model for
+meaning search, LM Studio by default) and, before the agent speaks, briefs it privately with
+what bears on the moment; it cites the file and page. "Try" on the card shows what it would
+be told. Mapping a file takes one model call per passage, so big files take a while.
+
+**Tools:** tick "Search the web", "Read a web page", "Calculator" or the tools of an MCP server
+on an agent's card. Before it speaks it may look things up, and everyone sees what it looked
+up. Add MCP servers under "Tools": a command Moot starts (e.g. `npx -y
+@modelcontextprotocol/server-filesystem D:\Documents`) or a URL.
+
+**Saved discussions and export:** discussions are saved as they run and survive a restart.
+The team builder lists them: open one, take its setup to run it again, or delete it. Export a
+discussion as a readable report (Markdown) or as everything (JSON).
+
+## Commands
+
+```
+moot                         start Moot and open it in the browser
+moot serve [--port 8765] [--open] [--data-dir PATH]
+moot providers               the model providers Moot can use
+moot models lmstudio         the models a provider offers right now
+moot ask openrouter MODEL "question"
+moot debate                  a short debate in the terminal
+moot --version
 ```
 
-## Live check
+The full web API is documented at http://127.0.0.1:8765/docs while Moot runs.
 
-Copy `.env.example` to `.env` and add your OpenRouter key, then double-click
-`try-moot.bat`. It checks OpenRouter, and Ollama / LM Studio if they are running.
+## Privacy and safety
 
-## Watch a debate
+- The server answers only this computer and refuses requests from other websites, since it
+  has no login and uses your keys. Serving on the network is possible, with a warning.
+- "Read a web page" never opens addresses on this computer or your local network.
+- The calculator only does arithmetic; no code is run.
+- MCP servers you add as commands run on your computer, like any program you start.
+- Agents follow a global rule never to invent facts or sources, and cite their files.
 
-Double-click `watch-debate.bat`, type a topic and pick a model. Ava argues for it, Ben
-against, and Cleo starts undecided, over an opening, a challenge and a closing round,
-then they vote on who made the strongest case. The moderator closes with a conclusion and
-a question for the audience. Agents can form alliances; the end of the run shows the
-argument map and who backed whom.
+## Development
 
-You can join in while they talk: type a message and press Enter. Write `@Ava` or `@Ben`
-to ask one of them directly; they answer right away. In the challenge round the agents
-can also @ each other. Commands:
+Everything installs into the project's own `.venv`.
 
-- `/poll` asks everyone who made the strongest case
-- `/poll Question | option | option` runs your own poll (`/poll Question` alone offers
-  Yes / No / Not sure)
-- `/pause` and `/resume`
+```powershell
+uv sync                  # create .venv with the dev tools
+uv run pytest            # Python tests
+uv run ruff check .      # lint
+uv run moot serve --open # run from source
+```
 
-When it asks who moderates, choose **You** to run the discussion yourself under your own
-name and role. Moot then waits for you: `/next` starts each round, `/floor Ben` gives
-someone the floor in the challenge round (`/floor` alone lets Moot choose), `/end` ends a
-round, `/remind Ben keep it short` reminds an agent, and `/finish` ends the discussion.
-`@all` asks every agent at once. There is no AI moderator help in this mode.
-
-## Run the server
-
-Double-click `serve.bat` (or run `uv run moot serve --open`). Moot starts on this computer at
-http://127.0.0.1:8765 and opens in your browser.
-
-Set up the discussion in the team builder: write the topic, seat agents from the library (or
-make your own), edit each one on its card, choose the model, who moderates, the rules and the
-round plan. Or press "Team Designer", describe your goal ("four different views on
-immigration", "choose between Lisbon, Berlin or staying remote") and let it propose the panel,
-the format and the options; a second pass checks the views are distinct and fair. Review the
-cards, change anything, then start. To make a decision, tick "This is a decision between options", list the options
-and use the Decision format: the vote asks which option to choose and the conclusion gives the
-decision, why, the risks, when to revisit it and the next steps.
-
-Then watch the round table: the speaker glows, beams show challenges, support and questions,
-polls appear over the table, and the moderator closes with a conclusion. Type to join in: `@`
-asks an agent (autocomplete included), `/` gives commands. When you moderate, Moot tells you
-whose move it is.
-
-Give an agent its own files: drop PDFs, Word, text or Markdown files on its card. Moot turns
-them into that agent's knowledge graph (the entities and facts in them, with an embedding model
-from LM Studio or another provider for meaning search) and, before the agent speaks, briefs it
-privately with what bears on the moment; it cites the file and page. "Try" on the card shows
-what it would be told.
-
-Give an agent tools on its card: web search, reading a web page, a calculator, and the tools
-of any MCP server you add under "Tools" (a command such as `npx -y
-@modelcontextprotocol/server-filesystem D:\Documents`, or a URL). Before it speaks it may look
-things up; everyone sees what it looked up. Web search needs a key in `.env`:
-`TAVILY_API_KEY` (1,000 free searches a month), `BRAVE_API_KEY`, or `SEARXNG_URL` for your own
-SearXNG.
-
-Discussions are saved on this computer as they run (in `%LOCALAPPDATA%\Moot\moot.db` on
-Windows; set `MOOT_DATA_DIR` in `.env` to keep them elsewhere). The team builder lists them:
-open one, take its setup to run it again, or delete it. Export a discussion from its screen as
-a readable report (Markdown) or as everything (JSON).
-
-Switch to "Map & alliances" to see the argument map (every point by speaker and round, and
-how points support, challenge or answer each other) and who backs whom, live; the round slider
-shows both as they were after any round.
-
-The full API is documented at http://127.0.0.1:8765/docs (and a plain test page is at /dev).
-Close the window (or press Ctrl+C) to stop it. Changing the app itself: see
-`frontend/README.md`.
-
-The server only answers this computer and refuses requests from other websites, since it has
-no login and uses your API keys.
-
-## Project layout
+The app's source is in `frontend/` (React + TypeScript + Vite); its built files are committed
+in `src/moot/server/static/`, so running Moot needs no Node.js. See `frontend/README.md`.
+`try-moot.bat` checks your model providers; `watch-debate.bat` runs a debate in the terminal.
 
 ```
 src/moot/
   core/        data model: personas, rules, round plan, events
-  providers/   connections to local and cloud models
-  engine/      discussion loop, moderator, alliances, polls
+  providers/   connections to local and cloud models (chat and embeddings)
+  engine/      discussion loop, moderator, alliances, polls, research step, Team Designer
   memory/      argument graph, private notebooks, agent briefings
-  knowledge/   per-agent files (RAG)
-  tools/       built-in tools and MCP
-  server/      web API and live event stream; serves the UI
+  knowledge/   per-agent files: reading, passages, knowledge graph, search
+  tools/       built-in tools and MCP servers
+  storage/     saved discussions and export
+  server/      web API and live event stream; serves the app
+frontend/      the app's source
 tests/         automated tests
-scripts/       developer scripts (live check)
-docs/          spec and design notes
+scripts/       developer scripts
+docs/          spec, decisions and build log
 ```
