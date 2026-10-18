@@ -1,6 +1,6 @@
 // Talking to the Moot server.
 
-import type { ModelEntry, ProviderInfo, SessionSummary, SessionView } from "./types";
+import type { Library, ModelEntry, ProviderInfo, SessionSummary, SessionView } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -9,6 +9,29 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+}
+
+interface ValidationProblem {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+/** "body.agents.1.name: Value error, ..." -> "Agent 2 · name: ..." */
+export function describeProblem(problem: ValidationProblem): string {
+  const path = (problem.loc ?? []).filter((part) => part !== "body");
+  const words: string[] = [];
+  for (let i = 0; i < path.length; i++) {
+    const part = path[i];
+    const next = path[i + 1];
+    if ((part === "agents" || part === "rounds") && typeof next === "number") {
+      words.push(`${part === "agents" ? "Agent" : "Round"} ${next + 1}`);
+      i++;
+    } else if (part !== "round_plan") {
+      words.push(String(part).replace(/_/g, " "));
+    }
+  }
+  const message = (problem.msg ?? "is not valid").replace(/^Value error, /, "");
+  return words.length ? `${words.join(" · ")}: ${message}` : message;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -20,7 +43,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = response.statusText;
     try {
       const body = await response.json();
-      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
+      detail = Array.isArray(body.detail)
+        ? body.detail.map(describeProblem).join("\n")
+        : typeof body.detail === "string"
+          ? body.detail
+          : JSON.stringify(body.detail);
     } catch {
       // not JSON: keep the status text
     }
@@ -48,6 +75,8 @@ export const api = {
   sessions: () => request<SessionSummary[]>("/api/sessions"),
   session: (id: string) => request<SessionView>(`/api/sessions/${id}`),
   createDemo: (body: DemoRequest) => post<SessionSummary>("/api/demo", body),
+  createSession: (config: unknown) => post<SessionSummary>("/api/sessions", config),
+  library: () => request<Library>("/api/library"),
   control: (id: string, control: Control) => post<SessionSummary>(`/api/sessions/${id}/${control}`),
   say: (id: string, text: string) => post<SessionSummary>(`/api/sessions/${id}/messages`, { text }),
   floor: (id: string, agent: string | null) =>

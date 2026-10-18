@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import Field, field_validator, model_validator
 
 from moot.core.base import MootModel, new_id
-from moot.core.polls import PollSpec, winner_poll_spec
+from moot.core.polls import PollSpec
 
 
 class RoundType(StrEnum):
@@ -63,7 +63,13 @@ class Round(MootModel):
     blind: bool = Field(default=False, description="agents don't see each other's answers")
     mentions_allowed: bool = False
     max_words: int | None = Field(default=None, ge=10, le=2000)
-    poll: PollSpec | None = Field(default=None, description="only for vote rounds")
+    poll: PollSpec | None = Field(
+        default=None,
+        description=(
+            "only for vote rounds; without one, a vote round asks which option to choose when "
+            "the discussion has options, or else who made the strongest case"
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -81,14 +87,10 @@ class Round(MootModel):
             data["instruction"] = DEFAULT_INSTRUCTIONS[round_type]
         data.setdefault("blind", round_type is RoundType.OPENING)
         data.setdefault("mentions_allowed", round_type in (RoundType.QA, RoundType.FREE))
-        if round_type is RoundType.VOTE and data.get("poll") is None:
-            data["poll"] = winner_poll_spec()
         return data
 
     @model_validator(mode="after")
     def _check_poll(self) -> Round:
-        if self.type is RoundType.VOTE and self.poll is None:
-            raise ValueError("a vote round needs a poll")
         if self.type is not RoundType.VOTE and self.poll is not None:
             raise ValueError("only vote rounds can have a poll")
         return self
@@ -166,8 +168,54 @@ def quick_take() -> RoundPlan:
     return RoundPlan(rounds=[Round(type=RoundType.OPENING)])
 
 
+def decision() -> RoundPlan:
+    """For choosing between options: views first, then criteria, weighing, a pre-mortem and
+    a vote among the options."""
+    return RoundPlan(
+        rounds=[
+            Round(
+                type=RoundType.OPENING,
+                name="Options",
+                instruction=(
+                    "Say which option you favour and your strongest reason. If you see a better "
+                    "option nobody has named, propose it."
+                ),
+            ),
+            Round(
+                type=RoundType.FREE,
+                name="Criteria",
+                mentions_allowed=False,
+                instruction=(
+                    "Say which criteria matter most for this decision (such as cost, risk, time "
+                    "or fairness), and why."
+                ),
+            ),
+            Round(
+                type=RoundType.CHALLENGE,
+                name="Weigh the options",
+                speaking_order=SpeakingOrder.MODERATOR,
+                mentions_allowed=True,
+                instruction=(
+                    "Judge the options against the criteria, and challenge the weakest "
+                    "reasoning you have heard."
+                ),
+            ),
+            Round(
+                type=RoundType.REBUTTAL,
+                name="Pre-mortem",
+                instruction=(
+                    "Imagine the option you favour was chosen and failed a year from now. Give "
+                    "the most likely reason, and what would prevent it."
+                ),
+            ),
+            Round(type=RoundType.VOTE, name="Decide"),
+        ]
+    )
+
+
 TEMPLATES: dict[str, tuple[str, Callable[[], RoundPlan]]] = {
     "classic_debate": ("Classic debate", classic_debate),
     "brainstorm": ("Brainstorm", brainstorm),
     "quick_take": ("Quick take", quick_take),
+    "decision": ("Decision", decision),
 }

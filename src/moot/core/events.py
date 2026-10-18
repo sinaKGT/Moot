@@ -95,6 +95,7 @@ class NotebookUpdated(EventBase):
     type: Literal["notebook_updated"] = "notebook_updated"
     agent_id: str
     verdict: Literal["yes", "no", "unsure"] | None = None
+    choice: str | None = None
     confidence: float | None = None
 
 

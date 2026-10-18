@@ -27,6 +27,8 @@ from moot.memory.notes import (
     NOTES_INSTRUCTIONS,
     NotesUpdate,
     apply_notes,
+    match_option,
+    notes_instructions,
     parse_notes,
     split_trailing_notes,
 )
@@ -56,7 +58,9 @@ __all__ = [
     "earlier_points",
     "ended_line",
     "invitation_lines",
+    "match_option",
     "names_of",
+    "notes_instructions",
     "pair_alignment",
     "parse_notes",
     "pending_items",

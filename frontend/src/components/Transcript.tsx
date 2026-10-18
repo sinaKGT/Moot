@@ -1,7 +1,14 @@
 // The conversation as glass cards, streaming as agents type.
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { pollCounts, splitConclusion, type DiscussionState, type MessageEntry, type Names } from "../session/reducer";
+import {
+  conclusionSections,
+  pollCounts,
+  splitConclusion,
+  type DiscussionState,
+  type MessageEntry,
+  type Names,
+} from "../session/reducer";
 import type { Persona, Round } from "../types";
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -52,6 +59,8 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
     const streaming = !entry.done;
     if (entry.purpose === "conclusion") {
       const { statement, question } = splitConclusion(entry.text);
+      const sections = conclusionSections(statement);
+      const decided = sections.some((s) => s.heading);
       return (
         <article key={entry.id} className="card conclusion">
           <div className="card-head">
@@ -60,10 +69,22 @@ export function Transcript({ state, agents, rounds, names, human }: Props) {
               <span className="tag answer">conclusion</span>
             </span>
           </div>
-          <p>
-            {statement}
-            {streaming && !question && <span className="caret" />}
-          </p>
+          {decided ? (
+            <div className="decision-report">
+              {sections.map((section, index) => (
+                <div key={index} className={section.heading === "Decision" ? "part main" : "part"}>
+                  {section.heading && <div className="kicker">{section.heading.toUpperCase()}</div>}
+                  <p>{section.text}</p>
+                </div>
+              ))}
+              {streaming && !question && <span className="caret" />}
+            </div>
+          ) : (
+            <p>
+              {statement}
+              {streaming && !question && <span className="caret" />}
+            </p>
+          )}
           {question && (
             <div className="audience">
               <div className="kicker">QUESTION FOR THE AUDIENCE</div>

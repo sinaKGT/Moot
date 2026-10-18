@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { MootEvent } from "../types";
-import { initialState, MAX_BEAMS, pollCounts, reduce, splitConclusion, type DiscussionState, type MessageEntry } from "./reducer";
+import {
+  choiceLabel,
+  conclusionSections,
+  initialState,
+  MAX_BEAMS,
+  pollCounts,
+  reduce,
+  splitConclusion,
+  type DiscussionState,
+  type MessageEntry,
+} from "./reducer";
 
 const names = { ava: "Ava", ben: "Ben", cleo: "Cleo", moderator: "Moderator", user: "You" };
 
@@ -165,12 +175,12 @@ describe("the discussion reducer", () => {
 
   it("records verdicts, the conclusion and the end", () => {
     const state = play([
-      { type: "notebook_updated", agent_id: "ava", verdict: "yes", confidence: 0.8 },
+      { type: "notebook_updated", agent_id: "ava", verdict: "yes", choice: null, confidence: 0.8 },
       { type: "turn_started", message_id: "c", speaker_id: "moderator", round_index: null, reply_to: null, purpose: "conclusion" },
       message("c", "moderator", "Undecided.\n\nQuestion for the audience: Would you?"),
       { type: "session_ended", reason: "completed" },
     ]);
-    expect(state.verdicts.ava).toEqual({ verdict: "yes", confidence: 0.8 });
+    expect(state.verdicts.ava).toEqual({ verdict: "yes", choice: null, confidence: 0.8 });
     expect(state.conclusionId).toBe("c");
     expect(state).toMatchObject({ status: "finished", endReason: "completed" });
   });
@@ -184,5 +194,40 @@ describe("splitConclusion", () => {
     });
     expect(splitConclusion("Done. **Question for the audience:** Who pays?")).toEqual({ statement: "Done.", question: "Who pays?" });
     expect(splitConclusion("No question here.")).toEqual({ statement: "No question here.", question: null });
+  });
+});
+
+describe("a decision", () => {
+  it("labels an agent's choice by the option's letter", () => {
+    expect(choiceLabel(" berlin", ["Lisbon", "Berlin"])).toBe("OPTION B");
+    expect(choiceLabel("a hybrid of both", ["Lisbon", "Berlin"])).toBe("A HYBRID OF BO");
+  });
+});
+
+describe("a decision conclusion", () => {
+  it("splits into its headings, with or without markdown, keeping list lines", () => {
+    const text = [
+      "After three rounds the panel converged.",
+      "- **Decision:** Lisbon",
+      "Why: lower costs and a strong talent pool; the vote went 2 to 1.",
+      "Costs matter most.",
+      "Risks: hiring takes longer than planned",
+      "Revisit if: costs rise by a fifth",
+      "## Next steps:",
+      "- visit two offices",
+      "- talk to a recruiter",
+    ].join("\n");
+    expect(conclusionSections(text)).toEqual([
+      { heading: null, text: "After three rounds the panel converged." },
+      { heading: "Decision", text: "Lisbon" },
+      { heading: "Why", text: "lower costs and a strong talent pool; the vote went 2 to 1.\nCosts matter most." },
+      { heading: "Risks", text: "hiring takes longer than planned" },
+      { heading: "Revisit if", text: "costs rise by a fifth" },
+      { heading: "Next steps", text: "- visit two offices\n- talk to a recruiter" },
+    ]);
+  });
+
+  it("leaves an ordinary conclusion as one part without a heading", () => {
+    expect(conclusionSections("The panel split.\nBen held firm.")).toEqual([{ heading: null, text: "The panel split.\nBen held firm." }]);
   });
 });

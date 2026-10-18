@@ -27,6 +27,10 @@ class SessionStatus(StrEnum):
     FINISHED = "finished"
 
 
+MAX_OPTIONS = 8
+MAX_OPTION_CHARS = 120
+
+
 class SessionConfig(MootModel):
     """Everything chosen before a discussion starts."""
 
@@ -45,6 +49,11 @@ class SessionConfig(MootModel):
     allow_alliances: bool = Field(
         default=True, description="agents may openly propose, accept and leave alliances"
     )
+    options: list[str] = Field(
+        default_factory=list,
+        max_length=MAX_OPTIONS,
+        description="the choices on the table: a discussion with options is a decision",
+    )
 
     @field_validator("topic")
     @classmethod
@@ -53,6 +62,24 @@ class SessionConfig(MootModel):
         if not value:
             raise ValueError("the topic cannot be empty")
         return value
+
+    @field_validator("options")
+    @classmethod
+    def _clean_options(cls, value: list[str]) -> list[str]:
+        cleaned: list[str] = []
+        for option in value:
+            option = " ".join(option.split())
+            if len(option) > MAX_OPTION_CHARS:
+                raise ValueError(f"keep each option under {MAX_OPTION_CHARS} characters")
+            if option and option.casefold() not in {o.casefold() for o in cleaned}:
+                cleaned.append(option)
+        if len(cleaned) == 1:
+            raise ValueError("a decision needs at least two options")
+        return cleaned
+
+    @property
+    def is_decision(self) -> bool:
+        return bool(self.options)
 
     @model_validator(mode="after")
     def _check(self) -> SessionConfig:

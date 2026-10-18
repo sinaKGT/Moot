@@ -2,7 +2,7 @@
 
 import type { Action } from "../commands";
 import { Avatar } from "../avatar";
-import type { DiscussionState } from "../session/reducer";
+import { choiceLabel, type DiscussionState } from "../session/reducer";
 import type { Persona, Round } from "../types";
 
 export function RoundPlan({ rounds, state }: { rounds: Round[]; state: DiscussionState }) {
@@ -35,7 +35,38 @@ export function RoundPlan({ rounds, state }: { rounds: Round[]; state: Discussio
 
 const VERDICT_LABEL = { yes: "YES", no: "NO", unsure: "UNSURE" } as const;
 
-export function Members({ agents, state }: { agents: Persona[]; state: DiscussionState }) {
+const letter = (index: number) => String.fromCharCode(65 + index);
+const fold = (text: string) => text.trim().toLowerCase();
+
+/** In a decision: the options, and who leans towards each. */
+export function Options({ options, agents, state }: { options: string[]; agents: Persona[]; state: DiscussionState }) {
+  return (
+    <section className="panel">
+      <h2 className="label">Options</h2>
+      <ol className="option-list">
+        {options.map((option, index) => {
+          const leaning = agents.filter((a) => {
+            const choice = state.verdicts[a.id]?.choice;
+            return choice && fold(choice) === fold(option);
+          });
+          return (
+            <li key={option}>
+              <span className="letter">{letter(index)}</span>
+              <span className="text">{option}</span>
+              <span className="leaning" aria-label={leaning.length ? `Leaning: ${leaning.map((a) => a.name).join(", ")}` : undefined}>
+                {leaning.map((a) => (
+                  <Avatar key={a.id} name={a.name} color={a.color} size={16} />
+                ))}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+export function Members({ agents, state, options = [] }: { agents: Persona[]; state: DiscussionState; options?: string[] }) {
   return (
     <section className="panel">
       <h2 className="label">Panel</h2>
@@ -52,9 +83,9 @@ export function Members({ agents, state }: { agents: Persona[]; state: Discussio
                   {state.speakingId === agent.id ? " · speaking" : ""}
                 </div>
               </div>
-              {verdict?.verdict && (
-                <span className="verdict">
-                  {VERDICT_LABEL[verdict.verdict]}
+              {(verdict?.choice || verdict?.verdict) && (
+                <span className="verdict" title={verdict.choice ?? undefined}>
+                  {verdict.choice ? choiceLabel(verdict.choice, options) : VERDICT_LABEL[verdict.verdict!]}
                   {verdict.confidence !== null ? ` ${Math.round(verdict.confidence * 100)}%` : ""}
                 </span>
               )}

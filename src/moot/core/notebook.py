@@ -14,6 +14,7 @@ Verdict = Literal["yes", "no", "unsure"]
 class StanceSnapshot(MootModel):
     round_index: int = Field(ge=0)
     verdict: Verdict | None = None
+    choice: str | None = None
     stance: str
     confidence: float = Field(ge=0, le=1)
 
@@ -21,6 +22,7 @@ class StanceSnapshot(MootModel):
 class Notebook(MootModel):
     agent_id: str
     verdict: Verdict | None = Field(default=None, description="answer to the topic question")
+    choice: str | None = Field(default=None, description="in a decision: the option it favours")
     stance: str = ""
     confidence: float = Field(default=0.5, ge=0, le=1)
     key_arguments: list[str] = Field(default_factory=list)
@@ -41,6 +43,7 @@ class Notebook(MootModel):
             StanceSnapshot(
                 round_index=round_index,
                 verdict=self.verdict,
+                choice=self.choice,
                 stance=self.stance,
                 confidence=self.confidence,
             )

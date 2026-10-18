@@ -6,7 +6,7 @@ import { parseInput, type Action } from "../commands";
 import { useSession } from "../session/useSession";
 import { Arena, Legend } from "./Arena";
 import { Composer } from "./Composer";
-import { Controls, Members, RoundPlan } from "./Rail";
+import { Controls, Members, Options, RoundPlan } from "./Rail";
 import { Transcript } from "./Transcript";
 import { YourMove } from "./YourMove";
 
@@ -103,7 +103,8 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
       <div className="body">
         <aside className="rail">
           <RoundPlan rounds={rounds} state={state} />
-          <Members agents={agents} state={state} />
+          {config.options.length > 0 && <Options options={config.options} agents={agents} state={state} />}
+          <Members agents={agents} state={state} options={config.options} />
           <Controls state={state} human={human} onAction={act} />
         </aside>
         <main className="stage">
@@ -117,6 +118,7 @@ export function SessionScreen({ id, onLeave }: { id: string; onLeave: () => void
             names={names}
             pollHidden={hiddenPoll === state.activePollId}
             onHidePoll={() => setHiddenPoll(state.activePollId)}
+            options={config.options}
           />
           <Legend />
         </main>

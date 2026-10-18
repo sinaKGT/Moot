@@ -100,10 +100,20 @@ class ModeratorBrain:
 
     def opening_messages(self, state: SessionState) -> list[Message]:
         config = state.config
+        if config.is_decision:
+            focus = (
+                f"restate the decision and its options ({'; '.join(config.options)}) in one "
+                f"sentence, and list 2 to {MAX_SUBQUESTIONS} criteria the decision should "
+                "weigh, each as a short question"
+            )
+        else:
+            focus = (
+                f"restate the topic in one sentence, and list 2 to {MAX_SUBQUESTIONS} short "
+                "sub-questions that will structure the discussion"
+            )
         user = (
-            f"{OPENING_TASK} In at most 100 words: welcome the participants by name, restate "
-            f"the topic in one sentence, and list 2 to {MAX_SUBQUESTIONS} short sub-questions "
-            "that will structure the discussion.\n\n"
+            f"{OPENING_TASK} In at most 100 words: welcome the participants by name, {focus}."
+            "\n\n"
             f"The format:\n{_format(config)}\n\n"
             "After your opening, add the sub-questions in exactly this form; it is hidden from "
             'the audience:\n<plan>{"subquestions": ["...", "..."]}</plan>'
@@ -225,8 +235,13 @@ class ModeratorBrain:
             notebook = state.notebooks.get(agent.id)
             if notebook and notebook.history:
                 steps = ", ".join(
-                    f"round {s.round_index + 1} {(s.verdict or 'undecided').upper()} "
-                    f"({round(s.confidence * 100)}%)"
+                    f"round {s.round_index + 1} "
+                    + (
+                        (s.choice or "undecided")
+                        if config.is_decision
+                        else (s.verdict or "undecided").upper()
+                    )
+                    + f" ({round(s.confidence * 100)}%)"
                     for s in notebook.history
                 )
                 history.append(f"- {agent.name}: {steps}")
@@ -240,6 +255,20 @@ class ModeratorBrain:
             material.append("Polls (each agent picked one option):\n" + "\n".join(polls))
         recent = state.messages[-RECENT_FOR_MODERATOR:]
         material.append(f"Last messages:\n{_transcript(config, recent)}")
+        if config.is_decision:
+            user = (
+                f"The discussion has ended. {REPORT_TASK}: the decision it points to. Use these "
+                "headings, each on its own line, in at most 220 words:\n"
+                f"Decision: the option to choose (from: {'; '.join(config.options)}, or a "
+                "better one that came up), or say that the group is not ready to decide\n"
+                "Why: the main reasons, and how the vote went\n"
+                "Risks: the biggest risks, and how to reduce them\n"
+                "Revisit if: what would make this decision worth reopening\n"
+                "Next steps: 3 to 5 concrete actions, one per line, each starting with '- '\n"
+                "Stay neutral and base everything on what was said; don't invent facts.\n\n"
+                + "\n\n".join(material)
+            )
+            return [Message("system", self.system_prompt(config)), Message("user", user)]
         user = (
             f"The discussion has ended. {REPORT_TASK}, speaking to the audience, in at most "
             "200 words. Cover:\n"

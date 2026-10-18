@@ -74,7 +74,7 @@ export interface DiscussionState {
   entries: Entry[];
   speakingId: string | null;
   waitingFor: { what: WaitingFor; roundIndex: number | null } | null;
-  verdicts: Record<string, { verdict: Verdict | null; confidence: number | null }>;
+  verdicts: Record<string, { verdict: Verdict | null; choice: string | null; confidence: number | null }>;
   polls: Record<string, PollView>;
   activePollId: string | null;
   alliances: Record<string, Alliance>;
@@ -266,7 +266,10 @@ export function reduce(state: DiscussionState, event: MootEvent, names: Names): 
     case "notebook_updated":
       return {
         ...next,
-        verdicts: { ...next.verdicts, [event.agent_id]: { verdict: event.verdict, confidence: event.confidence } },
+        verdicts: {
+          ...next.verdicts,
+          [event.agent_id]: { verdict: event.verdict, choice: event.choice, confidence: event.confidence },
+        },
       };
 
     case "alliance_changed": {
@@ -341,6 +344,43 @@ export function pollCounts(view: PollView): PollResult[] {
 }
 
 export const AUDIENCE_PREFIX = "Question for the audience:";
+
+const fold = (text: string) => text.trim().toLowerCase();
+
+/** The option an agent favours, as "OPTION B" when it is one of the listed options. */
+export function choiceLabel(choice: string, options: string[]): string {
+  const index = options.findIndex((o) => fold(o) === fold(choice));
+  return index >= 0 ? `OPTION ${String.fromCharCode(65 + index)}` : choice.toUpperCase().slice(0, 14);
+}
+
+export const DECISION_HEADINGS = ["Decision", "Why", "Risks", "Revisit if", "Next steps"] as const;
+
+export interface ConclusionSection {
+  heading: string | null;
+  text: string;
+}
+
+/** A decision conclusion's parts ("Decision: …", "Why: …"), tolerating markdown headings,
+ * bold and bullets; other lines belong to the part above; text before the first heading has none. */
+export function conclusionSections(text: string): ConclusionSection[] {
+  const heading = new RegExp(`^[-#*_\\s]*(${DECISION_HEADINGS.join("|")})[*_\\s]*:[*_\\s]*(.*)$`, "i");
+  const sections: ConclusionSection[] = [];
+  for (const line of text.split("\n")) {
+    const match = line.match(heading);
+    if (match) {
+      const name = DECISION_HEADINGS.find((h) => h.toLowerCase() === match[1].toLowerCase())!;
+      sections.push({ heading: name, text: match[2].trim() });
+    } else if (sections.length) {
+      const last = sections[sections.length - 1];
+      last.text = last.text ? `${last.text}\n${line}` : line;
+    } else {
+      sections.push({ heading: null, text: line });
+    }
+  }
+  return sections
+    .map((s) => ({ ...s, text: s.text.replace(/^\s+|\s+$/g, "") }))
+    .filter((s) => s.heading || s.text);
+}
 
 /** Split a conclusion into its statement and the question for the audience. */
 export function splitConclusion(text: string): { statement: string; question: string | null } {

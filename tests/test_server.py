@@ -115,6 +115,10 @@ def test_library(client):
     assert library["templates"]["classic_debate"]["name"] == "Classic debate"
     assert "answer_first" in library["rule_presets"]
     assert library["global_rules"]
+    assert library["templates"]["decision"]["name"] == "Decision"
+    example = library["example"]
+    assert [a["name"] for a in example["agents"]] == ["Ava", "Ben", "Cleo"]
+    assert example["round_plan"]["rounds"][-1]["type"] == "vote"
 
 
 # ------------------------------------------------------------------ sessions

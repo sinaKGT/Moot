@@ -32,6 +32,7 @@ from moot.core import (
     PollSpec,
     RoundPlan,
     SessionConfig,
+    SessionRules,
     SessionState,
     starter_personas,
     winner_poll_spec,
@@ -87,11 +88,21 @@ class TemplateInfo(BaseModel):
     plan: RoundPlan
 
 
+class ExampleTeam(BaseModel):
+    """The ready-made panel the team builder starts from."""
+
+    topic: str
+    agents: list[Persona]
+    round_plan: RoundPlan
+    rules: SessionRules
+
+
 class Library(BaseModel):
     personas: list[Persona]
     templates: dict[str, TemplateInfo]
     rule_presets: dict[str, str]
     global_rules: list[str]
+    example: ExampleTeam
 
 
 class DemoRequest(BaseModel):
@@ -282,8 +293,12 @@ def create_app(
 
     @app.get("/api/library", tags=["general"])
     async def library() -> Library:
-        """Starter personas, round-plan templates and rule presets, for setting up."""
+        """Starter personas, round-plan templates, rule presets and a ready-made panel."""
+        demo = demo_config(DEMO_TOPIC, ModelRef(provider="openrouter", model="any"))
         return Library(
+            example=ExampleTeam(
+                topic=demo.topic, agents=demo.agents, round_plan=demo.round_plan, rules=demo.rules
+            ),
             personas=starter_personas(),
             templates={
                 key: TemplateInfo(name=name, plan=make()) for key, (name, make) in TEMPLATES.items()

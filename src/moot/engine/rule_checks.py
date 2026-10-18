@@ -41,6 +41,7 @@ def check_rules(
         broken.append(f"Use at most {limit} words.")
     if (
         not reply
+        and not config.is_decision
         and RulePreset.ANSWER_FIRST in config.rules.presets
         and is_yes_no_topic(config.topic)
         and not _ANSWER_START.match(text)

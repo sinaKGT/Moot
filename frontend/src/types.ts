@@ -5,23 +5,51 @@ export type Purpose = "opening" | "summary" | "conclusion";
 export type Verdict = "yes" | "no" | "unsure";
 export type WaitingFor = "start_round" | "next_speaker" | "finish";
 
+export interface ModelRef {
+  provider: string;
+  model: string;
+  temperature?: number | null;
+}
+
+export interface Traits {
+  persuadability: number;
+  verbosity: number;
+  alliance_openness: number;
+}
+
 export interface Persona {
   id: string;
   name: string;
   color: string;
   role: string;
   viewpoint: string;
+  motivation: string;
+  expertise: string;
+  thinking_style: string;
+  traits: Traits;
+  model: ModelRef | null;
+  prompt_override: string | null;
 }
+
+export type RoundType = "opening" | "challenge" | "qa" | "rebuttal" | "free" | "vote" | "closing";
+export type SpeakingOrder = "fixed" | "moderator" | "free";
 
 export interface Round {
   id: string;
-  type: string;
+  type: RoundType;
   name: string;
   instruction: string;
-  speaking_order: "fixed" | "moderator" | "free";
+  speaking_order: SpeakingOrder;
   turns_per_agent: number;
   blind: boolean;
   mentions_allowed: boolean;
+  max_words: number | null;
+}
+
+export interface SessionRules {
+  presets: string[];
+  custom: string[];
+  max_words_per_turn: number | null;
 }
 
 export type Moderator =
@@ -34,6 +62,18 @@ export interface SessionConfig {
   agents: Persona[];
   moderator: Moderator;
   round_plan: { rounds: Round[] };
+  rules: SessionRules;
+  options: string[];
+  default_model: ModelRef | null;
+  allow_alliances: boolean;
+}
+
+export interface Library {
+  personas: Persona[];
+  templates: Record<string, { name: string; plan: { rounds: Round[] } }>;
+  rule_presets: Record<string, string>;
+  global_rules: string[];
+  example: { topic: string; agents: Persona[]; round_plan: { rounds: Round[] }; rules: SessionRules };
 }
 
 export interface ChatMessage {
@@ -146,7 +186,13 @@ export type MootEvent = Base &
     | { type: "turn_completed"; message: ChatMessage }
     | { type: "moderator_decision"; next_speaker_id: string | null; reason: string }
     | { type: "graph_updated"; links: GraphLink[] }
-    | { type: "notebook_updated"; agent_id: string; verdict: Verdict | null; confidence: number | null }
+    | {
+        type: "notebook_updated";
+        agent_id: string;
+        verdict: Verdict | null;
+        choice: string | null;
+        confidence: number | null;
+      }
     | {
         type: "alliance_changed";
         change: "proposed" | "accepted" | "refused" | "left" | "dissolved";

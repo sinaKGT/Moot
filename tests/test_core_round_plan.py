@@ -45,10 +45,24 @@ def test_explicit_values_override_defaults():
     assert custom.turns_per_agent == 2
 
 
-def test_vote_round_gets_a_winner_poll_by_default():
-    vote = Round(type=RoundType.VOTE)
-    assert vote.poll is not None
-    assert vote.poll.kind is PollKind.WINNER
+def test_a_vote_round_decides_its_poll_when_it_runs_unless_given_one():
+    assert Round(type=RoundType.VOTE).poll is None  # the options, or who made the strongest case
+    winner = PollSpec(question="Who won?", kind=PollKind.WINNER)
+    assert Round(type=RoundType.VOTE, poll=winner).poll == winner
+
+
+def test_the_decision_template():
+    plan = TEMPLATES["decision"][1]()
+    assert [r.name for r in plan.rounds] == [
+        "Options",
+        "Criteria",
+        "Weigh the options",
+        "Pre-mortem",
+        "Decide",
+    ]
+    assert plan.rounds[0].blind  # views first, before anyone is swayed
+    assert plan.rounds[2].speaking_order is SpeakingOrder.MODERATOR
+    assert plan.rounds[-1].type is RoundType.VOTE and plan.rounds[-1].poll is None
 
 
 def test_only_vote_rounds_can_have_a_poll():

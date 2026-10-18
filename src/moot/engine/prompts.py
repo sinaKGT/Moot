@@ -19,7 +19,7 @@ from moot.core import (
     Traits,
 )
 from moot.engine.alliances import ALLIANCE_INSTRUCTIONS
-from moot.memory import NOTES_INSTRUCTIONS, build_briefing, earlier_points
+from moot.memory import build_briefing, earlier_points, notes_instructions
 from moot.providers import Message
 
 RECENT_MESSAGES = 6
@@ -108,6 +108,11 @@ def persona_prompt(config: SessionConfig, agent: Persona) -> str:
 
     others = [participant_label(a) for a in config.agents if a.id != agent.id]
     lines += ["", f"Topic: {config.topic}"]
+    if config.is_decision:
+        lines.append(
+            f"This is a decision. The options: {'; '.join(config.options)}. Help the group "
+            "choose well: weigh the options honestly, and propose a better one if you see it."
+        )
     if config.background.strip():
         lines.append(f"Background: {config.background.strip()}")
     lines.append(f"Moderator: {moderator_label(config)}")
@@ -240,7 +245,7 @@ def turn_prompt(
     lines.append(f"It is your turn, {agent.name}.")
     if config.allow_alliances and not current.blind:
         lines += ["", ALLIANCE_INSTRUCTIONS]
-    lines += ["", NOTES_INSTRUCTIONS]
+    lines += ["", notes_instructions(config)]
     return "\n".join(lines)
 
 

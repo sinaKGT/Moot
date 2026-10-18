@@ -8,7 +8,7 @@ Node.js: `moot serve` serves it. You only need Node.js 22+ to change the app.
 ```
 npm install        # once
 npm run dev        # live-reloading app at http://localhost:5173 (start `moot serve` too)
-npm test           # unit tests (event handling, commands, round-table geometry)
+npm test           # unit tests (event handling, commands, team-builder draft, geometry)
 npm run build      # type-check, then build into src/moot/server/static
 ```
 
@@ -18,5 +18,9 @@ Layout:
 - `src/api.ts`: calls to the server
 - `src/session/reducer.ts`: turns the event stream into what the screen shows (pure, tested)
 - `src/commands.ts`: what you type: messages, /commands, @ and / autocomplete (tested)
-- `src/components/`: the start screen and the discussion screen (rail, round table,
-  poll card, transcript, input bar, "your move" prompts)
+- `src/builder/draft.ts`: the team builder's draft: editing, checks, and the session
+  configuration it becomes (pure, tested)
+- `src/components/builder/`: the team builder (library, table, agent card, model picker,
+  moderator, rules, round-plan editor)
+- `src/components/`: the discussion screen (rail, round table, poll card, transcript, input
+  bar, "your move" prompts)

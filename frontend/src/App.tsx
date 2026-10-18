@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { SessionScreen } from "./components/SessionScreen";
-import { StartScreen } from "./components/StartScreen";
+import { TeamBuilder } from "./components/builder/TeamBuilder";
 
 const sessionInUrl = () => new URLSearchParams(window.location.search).get("session");
 
@@ -21,6 +21,6 @@ export function App() {
   return sessionId ? (
     <SessionScreen key={sessionId} id={sessionId} onLeave={() => open(null)} />
   ) : (
-    <StartScreen onOpen={open} />
+    <TeamBuilder onOpen={open} />
   );
 }

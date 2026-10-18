@@ -2,7 +2,7 @@
 // for challenges (amber), support (teal) and questions (violet). Alliances are dashed teal links.
 
 import { Avatar, ModeratorMark } from "../avatar";
-import type { BeamKind, DiscussionState, Names } from "../session/reducer";
+import { choiceLabel, type BeamKind, type DiscussionState, type Names } from "../session/reducer";
 import type { Persona, Round } from "../types";
 import { PollCard } from "./PollCard";
 
@@ -63,9 +63,10 @@ interface Props {
   names: Names;
   pollHidden: boolean;
   onHidePoll: () => void;
+  options?: string[];
 }
 
-export function Arena({ agents, rounds, topic, moderatorName, human, state, names, pollHidden, onHidePoll }: Props) {
+export function Arena({ agents, rounds, topic, moderatorName, human, state, names, pollHidden, onHidePoll, options = [] }: Props) {
   const seats = seatPositions(agents.map((a) => a.id));
   const colors = Object.fromEntries(agents.map((a) => [a.id, a.color]));
   const round = state.roundIndex !== null ? rounds[state.roundIndex] : null;
@@ -143,7 +144,8 @@ export function Arena({ agents, rounds, topic, moderatorName, human, state, name
       {agents.map((agent) => {
         const seat = seats[agent.id];
         const isSpeaking = speaking === agent.id;
-        const verdict = state.verdicts[agent.id]?.verdict;
+        const notes = state.verdicts[agent.id];
+        const leaning = notes?.choice ? choiceLabel(notes.choice, options) : notes?.verdict;
         return (
           <div key={agent.id} className={`seat${isSpeaking ? " speaking" : ""}`} style={{ left: pct(seat.x), top: pct(seat.y) }}>
             <div className="disc" style={{ borderColor: `${agent.color}99`, boxShadow: isSpeaking ? `0 0 0 3px ${agent.color}, 0 0 34px ${agent.color}99` : undefined }}>
@@ -151,7 +153,7 @@ export function Arena({ agents, rounds, topic, moderatorName, human, state, name
             </div>
             <div className="seat-name">{agent.name}</div>
             <div className="seat-note" style={isSpeaking ? { color: agent.color } : undefined}>
-              {isSpeaking ? "speaking" : verdict ?? ""}
+              {isSpeaking ? "speaking" : leaning ?? ""}
             </div>
           </div>
         );

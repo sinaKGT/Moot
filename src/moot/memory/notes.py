@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 
-from moot.core import Notebook, Persona, SessionState
+from moot.core import Notebook, Persona, SessionConfig, SessionState
 from moot.providers import extract_json_object
 
 MAX_ITEMS = 5
@@ -55,6 +55,7 @@ class NotesUpdate(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     verdict: str | None = None
+    choice: str | None = None
     confidence: float | None = None
     stance: str | None = None
     key_arguments: list[str] | None = None
@@ -126,6 +127,32 @@ def split_trailing_notes(text: str) -> tuple[str, str]:
     return text, ""
 
 
+DECISION_NOTES = (
+    'This is a decision, so also add "choice": the option you favour now, named exactly as '
+    "listed (or a new option you propose)."
+)
+
+
+def notes_instructions(config: SessionConfig) -> str:
+    """How to write private notes; decisions also ask for the option the agent favours."""
+    if not config.is_decision:
+        return NOTES_INSTRUCTIONS
+    return f"{NOTES_INSTRUCTIONS}\n{DECISION_NOTES}"
+
+
+def match_option(text: str, options: list[str]) -> str:
+    """The listed option an agent means ("hybrid" -> "Hybrid"), or its own words."""
+    cleaned = " ".join(text.split()).strip(" .\"'")[:MAX_ITEM_CHARS]
+    folded = cleaned.casefold()
+    for option in options:
+        if option.casefold() == folded:
+            return option
+    starts = [
+        o for o in options if o.casefold().startswith(folded) or folded.startswith(o.casefold())
+    ]
+    return starts[0] if len(starts) == 1 else cleaned
+
+
 def apply_notes(
     state: SessionState, agent: Persona, update: NotesUpdate, round_index: int
 ) -> Notebook:
@@ -139,6 +166,8 @@ def apply_notes(
 
     if update.verdict is not None:
         notebook.verdict = update.verdict  # type: ignore[assignment]
+    if update.choice and update.choice.strip():
+        notebook.choice = match_option(update.choice, config.options)
     if update.confidence is not None:
         notebook.confidence = update.confidence
     if update.stance:

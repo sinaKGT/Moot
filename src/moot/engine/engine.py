@@ -84,6 +84,7 @@ from moot.providers import (
 
 DEFAULT_MAX_CONSECUTIVE_FAILURES = 3
 DEFAULT_MAX_REPLY_CHAIN = 2  # a question, its answer, and one answer back
+DECISION_QUESTION = "Which option should we choose?"
 
 
 class _TooManyFailures(Exception):
@@ -366,17 +367,26 @@ class DiscussionEngine:
         self.events.emit(RoundEnded(round_index=index))
 
     async def _round_body(self, index: int, current: Round, turns: dict[str, int]) -> None:
-        if current.type is RoundType.VOTE and current.poll is not None:
+        if current.type is RoundType.VOTE:
             await self._between_turns(index, current)
             if self._stopped:
                 return
             if not self._round_cut_short():
-                await self._run_poll(current.poll, index, current, opened_by=MODERATOR_ID)
+                await self._run_poll(self._vote_spec(current), index, current, MODERATOR_ID)
         elif self._human and current.speaking_order is SpeakingOrder.MODERATOR:
             await self._moderated_turns(index, current, turns)
         else:
             await self._automatic_turns(index, current, turns)
         await self._between_turns(index, current)  # anything the user did during the last turn
+
+    def _vote_spec(self, current: Round) -> PollSpec:
+        """A vote round's poll: its own, else the decision's options, else who won."""
+        if current.poll is not None:
+            return current.poll
+        options = self.state.config.options
+        if options:
+            return PollSpec(question=DECISION_QUESTION, options=options)
+        return winner_poll_spec()
 
     def _round_cut_short(self) -> bool:
         return self._stopped or self._finishing or self._advance is not None
@@ -861,7 +871,10 @@ class DiscussionEngine:
         notebook = apply_notes(self.state, agent, update, index)
         self.events.emit(
             NotebookUpdated(
-                agent_id=agent.id, verdict=notebook.verdict, confidence=notebook.confidence
+                agent_id=agent.id,
+                verdict=notebook.verdict,
+                choice=notebook.choice,
+                confidence=notebook.confidence,
             )
         )
 
